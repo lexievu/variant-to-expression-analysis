@@ -4,7 +4,7 @@ from alphagenome.models import dna_client
 from alphagenome.data import genome
 import os
 from dotenv import load_dotenv
-from constants import data_path, example_rna_path, quick_10
+from constants import DATA_PATH, EXAMPLE_RNA_PATH, QUICK_10
 import utils
 
 # Load variables from .env file into the environment
@@ -12,7 +12,7 @@ load_dotenv()
 
 # --- 1. CONFIGURATION ---
 API_KEY = os.getenv("ALPHAGENOME_API_KEY")
-VCF_FILE = quick_10
+VCF_FILE = QUICK_10
 OUTPUT_FILENAME = "output/alphagenome_hits.tsv"
 TISSUE_ID = 'UBERON:0002048'  # Lung
 DNA_SEQUENCE_LENGTH = 1_048_576

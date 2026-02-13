@@ -162,30 +162,21 @@ class TestParseCsq:
 # parse_csq_field (from 2_vcf_filter.py) — integration-style tests
 # ===================================================================
 
+# 2_vcf_filter no longer has top-level side effects (logging is deferred
+# to setup_logging()), so we can import directly.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
+from importlib import import_module
+vcf_filter = import_module('2_vcf_filter')
+
+
 class TestParseCsqField:
     """Test the filter-level function that wraps utils.parse_csq
     with impact and gene-set checks."""
 
-    @staticmethod
-    def _parse(variant, valid_genes, target_impacts=None):
-        """Inline reimplementation matching 2_vcf_filter.parse_csq_field
-        so we don't need to import from a script with top-level side effects."""
-        if target_impacts is None:
-            target_impacts = {'HIGH'}
-        candidates = []
-        for entry in utils.parse_csq(variant):
-            if entry['impact'] in target_impacts and entry['gene_id_stripped'] in valid_genes:
-                candidates.append({
-                    'gene_id': entry['gene_id_stripped'],
-                    'impact': entry['impact'],
-                    'consequence': entry['consequence'],
-                })
-        return candidates
-
     def test_keeps_high_impact_in_gene_set(self):
         v = MockVariant(MULTI_TRANSCRIPT)
         genes = {'ENSG00000141510'}  # TP53
-        result = self._parse(v, genes)
+        result = vcf_filter.parse_csq_field(v, genes, {'HIGH'})
         assert len(result) == 1
         assert result[0]['impact'] == 'HIGH'
         assert result[0]['gene_id'] == 'ENSG00000141510'
@@ -193,24 +184,69 @@ class TestParseCsqField:
     def test_skips_when_gene_not_in_set(self):
         v = MockVariant(MULTI_TRANSCRIPT)
         genes = {'ENSG_NOT_PRESENT'}
-        assert self._parse(v, genes) == []
+        assert vcf_filter.parse_csq_field(v, genes, {'HIGH'}) == []
 
-    def test_skips_moderate_by_default(self):
+    def test_skips_moderate_when_only_high(self):
         v = MockVariant(SINGLE_TRANSCRIPT)  # MODERATE impact
         genes = {'ENSG00000133703'}
-        assert self._parse(v, genes) == []
+        assert vcf_filter.parse_csq_field(v, genes, {'HIGH'}) == []
 
     def test_keeps_moderate_when_requested(self):
         v = MockVariant(SINGLE_TRANSCRIPT)
         genes = {'ENSG00000133703'}
-        result = self._parse(v, genes, target_impacts={'HIGH', 'MODERATE'})
+        result = vcf_filter.parse_csq_field(v, genes, {'HIGH', 'MODERATE'})
         assert len(result) == 1
         assert result[0]['consequence'] == 'missense_variant'
 
+    def test_high_and_moderate_together(self):
+        v = MockVariant(MULTI_TRANSCRIPT)
+        genes = {'ENSG00000141510'}  # TP53 — has both HIGH and MODERATE transcripts
+        result = vcf_filter.parse_csq_field(v, genes, {'HIGH', 'MODERATE'})
+        assert len(result) == 2
+        impacts = {r['impact'] for r in result}
+        assert impacts == {'HIGH', 'MODERATE'}
+
     def test_empty_gene_set(self):
         v = MockVariant(MULTI_TRANSCRIPT)
-        assert self._parse(v, set()) == []
+        assert vcf_filter.parse_csq_field(v, set(), {'HIGH'}) == []
 
     def test_no_csq(self):
         v = MockVariant(None)
-        assert self._parse(v, {'ENSG00000141510'}) == []
+        assert vcf_filter.parse_csq_field(v, {'ENSG00000141510'}, {'HIGH'}) == []
+
+
+# ===================================================================
+# parse_args (CLI from 2_vcf_filter.py)
+# ===================================================================
+
+class TestParseArgs:
+    """Test CLI argument parsing."""
+
+    def test_defaults(self):
+        args = vcf_filter.parse_args([])
+        from constants import DATA_PATH, EXAMPLE_RNA_PATH, DEFAULT_IMPACT_LEVELS
+        assert args.vcf == DATA_PATH
+        assert args.rna == EXAMPLE_RNA_PATH
+        assert args.output == vcf_filter.DEFAULT_OUTPUT
+        assert args.impact == DEFAULT_IMPACT_LEVELS
+
+    def test_custom_impact_high_only(self):
+        args = vcf_filter.parse_args(['--impact', 'HIGH'])
+        assert args.impact == {'HIGH'}
+
+    def test_custom_impact_comma_separated(self):
+        args = vcf_filter.parse_args(['--impact', 'HIGH,MODERATE'])
+        assert args.impact == {'HIGH', 'MODERATE'}
+
+    def test_impact_case_insensitive(self):
+        args = vcf_filter.parse_args(['--impact', 'high,moderate'])
+        assert args.impact == {'HIGH', 'MODERATE'}
+
+    def test_custom_output(self):
+        args = vcf_filter.parse_args(['-o', 'my_output.vcf'])
+        assert args.output == 'my_output.vcf'
+
+    def test_custom_vcf_and_rna(self):
+        args = vcf_filter.parse_args(['--vcf', 'a.vcf', '--rna', 'b.csv'])
+        assert args.vcf == 'a.vcf'
+        assert args.rna == 'b.csv'

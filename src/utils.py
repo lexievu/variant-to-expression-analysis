@@ -9,6 +9,25 @@ CSQ field layout (pipe-delimited, comma-separated transcripts):
   Index 4: Gene    (Ensembl gene ID, e.g. ENSG00000000003.15)
 """
 
+import logging
+
+
+def setup_logging(log_file, level=logging.INFO):
+    """Configure structured logging to *log_file* and the console.
+
+    Safe to call multiple times — handlers are only added once.
+    """
+    logger = logging.getLogger()
+    if not logger.handlers:
+        logger.setLevel(level)
+        fmt = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+        fh = logging.FileHandler(log_file, mode='w')
+        fh.setFormatter(fmt)
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        logger.addHandler(fh)
+        logger.addHandler(sh)
+
 
 def get_gene_name(variant):
     """Return the gene symbol (SYMBOL, CSQ index 3) for a variant."""
