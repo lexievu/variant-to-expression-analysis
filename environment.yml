@@ -1,0 +1,14 @@
+name: biotech_challenge
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - cyvcf2=0.31
+  - numpy
+  - pandas
+  - pip
+  - pip:
+      - pytest
+      - python-dotenv
+      - alphagenome
