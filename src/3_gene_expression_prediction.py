@@ -4,7 +4,7 @@ from alphagenome.models import dna_client
 from alphagenome.data import genome
 import os
 from dotenv import load_dotenv
-from global_variables import *
+from constants import data_path, example_rna_path, quick_10
 import utils
 
 # Load variables from .env file into the environment
@@ -23,7 +23,7 @@ outfile = open(OUTPUT_FILENAME, 'w')
 
 # Write the Header Line
 # \t means "tab", \n means "new line"
-header = "CHROM\tPOS\tREF\tALT\tGENE\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS\n"
+header = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS\n"
 outfile.write(header)
 
 # --- 3. INITIALIZE ALPHAGENOME ---
@@ -46,6 +46,7 @@ for variant in vcf:
     alt = variant.ALT[0]
     
     gene_name = utils.get_gene_name(variant)
+    gene_id = utils.get_gene_id(variant)  # Ensembl ID, version-stripped
 
     # Define Variant & Interval for AlphaGenome
     ag_variant = genome.Variant(chrom, pos, ref, alt)
@@ -90,7 +91,7 @@ for variant in vcf:
 
         # Format the line for the file
         # .4f means "4 decimal places"
-        line = f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{ref_sum:.2f}\t{alt_sum:.2f}\t{log2_fc:.4f}\t{status}\n"
+        line = f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}\t{ref_sum:.2f}\t{alt_sum:.2f}\t{log2_fc:.4f}\t{status}\n"
         outfile.write(line)
         count_saved += 1
         

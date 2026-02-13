@@ -1,9 +1,8 @@
-import gzip
-import csv
 import logging
 import pandas as pd
-from global_variables import *
+from constants import data_path, example_rna_path, quick_10
 from cyvcf2 import VCF, Writer
+import utils
 
 # --- 1. CONFIGURATION ---
 VCF_FILENAME = data_path 
@@ -44,33 +43,19 @@ def load_rna_gene_ids(rna_file):
         logging.error(f"Failed to load RNA file: {e}")
         return set()
 
-def parse_csq_field(csq_string, valid_genes):
+def parse_csq_field(variant, valid_genes):
     """
-    Parses the VEP CSQ string to find relevant transcripts.
-    CSQ Format: Allele|Consequence|IMPACT|SYMBOL|Gene|...
-    Indices: Allele=0, Consequence=1, IMPACT=2, Gene=4
+    Uses shared utils.parse_csq() to find transcripts matching our
+    impact criteria and expressed-gene list.
     """
     candidates = []
-    # CSQ can have multiple transcripts separated by comma
-    transcripts = csq_string.split(',')
-    
-    for tr in transcripts:
-        fields = tr.split('|')
-        if len(fields) < 5:
-            continue
-            
-        consequence = fields[1]
-        impact = fields[2]
-        gene_id = fields[4]
-        
-        # Check if this transcript meets our criteria
-        if impact in TARGET_IMPACTS and gene_id in valid_genes:
+    for entry in utils.parse_csq(variant):
+        if entry['impact'] in TARGET_IMPACTS and entry['gene_id_stripped'] in valid_genes:
             candidates.append({
-                'gene_id': gene_id,
-                'impact': impact,
-                'consequence': consequence
+                'gene_id': entry['gene_id_stripped'],
+                'impact': entry['impact'],
+                'consequence': entry['consequence'],
             })
-            
     return candidates
 
 def filter_vcf(vcf_file, valid_genes):
@@ -103,28 +88,8 @@ def filter_vcf(vcf_file, valid_genes):
                 continue
 
             # --- FILTER 3: CSQ Parsing (VEP) ---
-            csq_str = variant.INFO.get('CSQ')
-            if not csq_str:
-                continue
-
-            # CSQ format: Allele|Consequence|IMPACT|SYMBOL|Gene|...
-            # Indices: Consequence=1, IMPACT=2, Gene=4
-            keep_variant = False
-            
-            for transcript in csq_str.split(','):
-                fields = transcript.split('|')
-                if len(fields) < 5: 
-                    continue
-                
-                impact = fields[2]
-                gene_id = fields[4]
-
-                # Logic: Must be (HIGH Impact OR Splice Variant) AND (Gene in RNA file)
-                is_high_impact = (impact in TARGET_IMPACTS)
-                
-                if is_high_impact and (gene_id in valid_genes):
-                    keep_variant = True
-                    break # Found one valid transcript, keep the whole variant line
+            hits = parse_csq_field(variant, valid_genes)
+            keep_variant = len(hits) > 0
             
             if keep_variant:
                 w.write_record(variant)
