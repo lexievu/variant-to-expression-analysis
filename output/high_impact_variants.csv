@@ -1,0 +1,9 @@
+chrom,pos,ref,alt,gene_id,impact,consequence
+chr2,47006054,TCG,T,ENSG00000068724,HIGH,frameshift_variant
+chr3,58589218,G,A,ENSG00000168309,HIGH,stop_gained
+chr7,1746696,C,G,ENSG00000225968,HIGH,stop_gained
+chr9,131071589,AG,A,ENSG00000050555,HIGH,frameshift_variant
+chr12,29783539,C,T,ENSG00000133687,HIGH,stop_gained
+chr16,3057614,G,A,ENSG00000008516,HIGH,splice_donor_variant
+chr17,39719785,A,T,ENSG00000141736,HIGH,splice_acceptor_variant
+chr19,2213544,GA,G,ENSG00000104885,HIGH,frameshift_variant
