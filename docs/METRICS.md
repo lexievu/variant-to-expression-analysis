@@ -1,6 +1,8 @@
 # Scoring Metrics for Cancer Vaccine Target Prioritisation
 
-This document explains the metrics used in `3_gene_expression_prediction.py` to evaluate whether a somatic variant is likely to produce a well-expressed neoantigen suitable for cancer vaccine targeting.
+This document explains the metrics used in `4_score_variants.py` to evaluate whether a somatic variant is likely to produce a well-expressed neoantigen suitable for cancer vaccine targeting.
+
+> **Architecture note:** Raw expression predictions are produced by `3_gene_expression_prediction.py` (AlphaGenome API). All scoring and metric calculation is performed by `4_score_variants.py`, which can be re-run without API calls.
 
 > The core question: **"Will this mutation produce enough mutant protein on the tumour cell surface for the immune system to recognise?"**
 

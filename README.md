@@ -12,7 +12,7 @@ Starting from a TCGA LUAD paired tumor/normal VCF, the pipeline:
 
 1. **Filters** for high-confidence somatic variants (PASS, configurable VEP impact level, expressed in patient RNA-seq).
 2. Queries the **AlphaGenome API** to predict reference vs. alternate RNA-seq expression across a 1 MB window around each variant.
-3. Computes **log₂ fold-change** and classifies each variant as *Gain of Expression*, *Loss of Expression*, or *Neutral*.
+3. **Scores** raw predictions with biological context — log₂ fold-change, VAF, RNA-seq TPM, NMD, and a composite vaccine-priority label.
 4. Links predictions to patient RNA-seq data via **harmonised Ensembl gene IDs** (GENCODE v36, version-stripped).
 
 The results can be benchmarked against real patient RNA-seq data and GTEx expression baselines.
@@ -25,19 +25,27 @@ The results can be benchmarked against real patient RNA-seq data and GTEx expres
 TCGA LUAD VCF (paired tumor/normal)
         │
         ▼
-┌───────────────────────────────────────────────┐
-│  2_vcf_filter.py                              │
-│  PASS + VEP impact (configurable) + RNA match │
-│  → output/high_impact_variants.vcf             │
-└──────────────────────┬────────────────────────┘
-                       │
-                       ▼
-┌───────────────────────────────────────────────┐
-│  3_gene_expression_prediction.py               │
-│  AlphaGenome API → ref/alt RNA-seq predictions  │
-│  Log₂ FC classification + harmonised gene IDs   │
-│  → output/alphagenome_hits.tsv                  │
-└───────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────┐
+│  2_vcf_filter.py                                │
+│  PASS + VEP impact (configurable) + RNA match   │
+│  → output/high_impact_variants.vcf              │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│  3_gene_expression_prediction.py                │
+│  AlphaGenome API → raw ref/alt expression sums  │
+│  Retry, rate-limit, checkpoint/resume           │
+│  → output/raw_predictions.tsv                   │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│  4_score_variants.py                            │
+│  log₂ FC, VAF, TPM, NMD, vaccine priority      │
+│  Re-runnable without API calls                  │
+│  → output/scored_variants.tsv                   │
+└─────────────────────────────────────────────────┘
 ```
 
 ---
@@ -53,15 +61,17 @@ TCGA LUAD VCF (paired tumor/normal)
 │   └── alphagenome_input.csv            # Exported variant list for API queries
 ├── output/
 │   ├── high_impact_variants.vcf         # Filtered variants (PASS + impact + RNA match)
-│   ├── alphagenome_hits.tsv             # AlphaGenome expression predictions
+│   ├── raw_predictions.tsv              # AlphaGenome raw expression sums
+│   ├── scored_variants.tsv              # Scored variants (FC, VAF, TPM, NMD, priority)
 │   └── ...                              # Intermediate outputs
 ├── src/
 │   ├── 2_vcf_filter.py                  # Variant filtering (CLI: --impact, --output)
-│   ├── 3_gene_expression_prediction.py  # AlphaGenome expression prediction
+│   ├── 3_gene_expression_prediction.py  # AlphaGenome raw predictions (API, retry, resume)
+│   ├── 4_score_variants.py              # Biological scoring (VAF, TPM, NMD, priority)
 │   ├── constants.py                     # Shared configuration (UPPERCASE constants)
 │   └── utils.py                         # CSQ parsing, gene ID extraction, logging setup
 ├── tests/
-│   └── test_utils.py                    # Unit & integration tests (31 tests)
+│   └── test_utils.py                    # Unit & integration tests (44 tests)
 ├── .github/workflows/
 │   └── tests.yml                        # CI: pytest on push/PR to main (micromamba)
 ├── environment.yml                      # Conda environment spec (bioconda + conda-forge)
@@ -106,13 +116,17 @@ Activate the environment and run scripts sequentially:
 ```bash
 conda activate biotech_challenge
 
-# Filter variants (defaults to HIGH impact; use --impact to change)
+# Step 1: Filter variants (defaults to HIGH impact; use --impact to change)
 python src/2_vcf_filter.py                              # → output/high_impact_variants.vcf
 python src/2_vcf_filter.py --impact HIGH,MODERATE        # Include missense variants
 python src/2_vcf_filter.py --impact HIGH -o custom.vcf   # Custom output path
 
-# Predict expression changes via AlphaGenome
-python src/3_gene_expression_prediction.py               # → output/alphagenome_hits.tsv
+# Step 2: Predict expression via AlphaGenome (expensive — uses API)
+python src/3_gene_expression_prediction.py               # → output/raw_predictions.tsv
+python src/3_gene_expression_prediction.py --resume      # Resume interrupted run
+
+# Step 3: Score variants with biological context (cheap — no API)
+python src/4_score_variants.py                           # → output/scored_variants.tsv
 ```
 
 ### Running Tests
@@ -141,6 +155,7 @@ Tests also run automatically on every push/PR to `main` via GitHub Actions.
 | Loss threshold | log₂ FC < −1.0 |
 
 For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priority), see [docs/METRICS.md](docs/METRICS.md).
+For why UCSC Genome Browser context retrieval is not needed, see [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md).
 
 ---
 

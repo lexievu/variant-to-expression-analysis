@@ -1,8 +1,11 @@
-"""AlphaGenome expression-impact prediction for somatic variants.
+"""AlphaGenome expression prediction — raw API output.
 
 Reads a filtered VCF (by default the output of ``2_vcf_filter.py``), queries
-the AlphaGenome API for each variant, and writes a TSV of predicted expression
-changes (log₂ fold-change).
+the AlphaGenome API for each variant, and writes a **raw predictions TSV**
+containing only the expensive API outputs.
+
+Downstream scoring (VAF, TPM, NMD, vaccine priority) is handled by
+``4_score_variants.py``, which can be re-run cheaply without touching the API.
 
 Robustness features
 -------------------
@@ -34,7 +37,7 @@ from alphagenome.models import dna_client
 from alphagenome.data import genome
 from dotenv import load_dotenv
 
-from constants import HIGH_IMPACT_VCF, EXAMPLE_RNA_PATH
+from constants import HIGH_IMPACT_VCF, RAW_PREDICTIONS
 import utils
 
 # ---------------------------------------------------------------------------
@@ -42,7 +45,7 @@ import utils
 # ---------------------------------------------------------------------------
 LOG_FILENAME = "log/gene_expression_prediction.log"
 DEFAULT_VCF = HIGH_IMPACT_VCF
-DEFAULT_OUTPUT = "output/alphagenome_hits.tsv"
+DEFAULT_OUTPUT = RAW_PREDICTIONS
 DEFAULT_TISSUE = "UBERON:0002048"  # Lung
 DNA_SEQUENCE_LENGTH = 1_048_576
 
@@ -51,21 +54,7 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0          # seconds; doubles each retry
 RATE_LIMIT_DELAY = 0.5          # seconds between successive API calls
 
-# Expression fold-change thresholds
-FC_GAIN_THRESHOLD = 1.0
-FC_LOSS_THRESHOLD = -1.0
-
-# Vaccine target scoring thresholds
-TPM_EXPRESSED_THRESHOLD = 1.0   # TPM >= 1 → gene is expressed
-VAF_CLONAL_THRESHOLD = 0.2     # VAF >= 0.2 → likely clonal variant
-
-DEFAULT_RNA = EXAMPLE_RNA_PATH
-
-HEADER = (
-    "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
-    "\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS"
-    "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
-)
+RAW_HEADER = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\n"
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +64,7 @@ HEADER = (
 def parse_args(argv=None):
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(
-        description="Predict expression impact of somatic variants via AlphaGenome.",
+        description="Query AlphaGenome for expression predictions (raw output).",
     )
     parser.add_argument(
         "--vcf", default=DEFAULT_VCF,
@@ -83,15 +72,11 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--output", "-o", default=DEFAULT_OUTPUT,
-        help=f"Output TSV path (default: {DEFAULT_OUTPUT}).",
+        help=f"Output raw-predictions TSV path (default: {DEFAULT_OUTPUT}).",
     )
     parser.add_argument(
         "--tissue", default=DEFAULT_TISSUE,
         help=f"UBERON ontology ID for tissue type (default: {DEFAULT_TISSUE}).",
-    )
-    parser.add_argument(
-        "--rna", default=DEFAULT_RNA,
-        help=f"Path to RNA-seq CSV for TPM lookup (default: {DEFAULT_RNA}).",
     )
     parser.add_argument(
         "--resume", action="store_true",
@@ -163,45 +148,6 @@ def _predict_with_retry(model, interval, ag_variant, tissue_id,
     raise last_exc  # type: ignore[misc]
 
 
-def _classify(log2_fc):
-    """Return a human-readable status label for a log₂ fold-change."""
-    if log2_fc > FC_GAIN_THRESHOLD:
-        return "Gain_of_Expression"
-    if log2_fc < FC_LOSS_THRESHOLD:
-        return "Loss_of_Expression"
-    return "Neutral"
-
-
-def _compute_log2_fc(ref_sum, alt_sum):
-    """Compute log₂ fold-change, guarding against division by zero."""
-    if ref_sum == 0 and alt_sum == 0:
-        return 0.0
-    return float(np.log2((alt_sum + 1e-9) / (ref_sum + 1e-9)))
-
-
-def _vaccine_priority(log2_fc, vaf, tpm, nmd_flag):
-    """Assign a composite vaccine-suitability priority.
-
-    A *good* vaccine target is a clonal somatic variant in an expressed
-    gene whose mutant allele is predicted to maintain (or increase)
-    expression and is not subject to nonsense-mediated decay.
-
-    Returns one of: HIGH, MEDIUM, LOW.
-    """
-    expressed = (not np.isnan(tpm)) and tpm >= TPM_EXPRESSED_THRESHOLD
-    clonal = (not np.isnan(vaf)) and vaf >= VAF_CLONAL_THRESHOLD
-    loss = log2_fc < FC_LOSS_THRESHOLD
-
-    # Automatic LOW: NMD kills the transcript, or predicted expression loss
-    if nmd_flag or loss:
-        return "LOW"
-    # HIGH: expressed gene, clonal variant, no predicted loss
-    if expressed and clonal:
-        return "HIGH"
-    # Everything else
-    return "MEDIUM"
-
-
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -210,11 +156,10 @@ def run_predictions(
     vcf_file=DEFAULT_VCF,
     output_file=DEFAULT_OUTPUT,
     tissue_id=DEFAULT_TISSUE,
-    rna_file=DEFAULT_RNA,
     resume=False,
     dna_length=DNA_SEQUENCE_LENGTH,
 ):
-    """Iterate over variants in *vcf_file* and write AlphaGenome predictions."""
+    """Query AlphaGenome for each variant and write raw predictions."""
 
     # --- Validate inputs ---------------------------------------------------
     load_dotenv()
@@ -235,9 +180,6 @@ def run_predictions(
         if already_done:
             file_mode = "a"  # append to existing results
 
-    # --- TPM lookup --------------------------------------------------------
-    tpm_lookup = utils.load_tpm_lookup(rna_file)
-
     # --- Initialise model & VCF --------------------------------------------
     logging.info("Input VCF:  %s", vcf_file)
     logging.info("Output TSV: %s", output_file)
@@ -255,7 +197,7 @@ def run_predictions(
 
     with open(output_file, file_mode) as outfile:
         if file_mode == "w":
-            outfile.write(HEADER)
+            outfile.write(RAW_HEADER)
 
         for variant in vcf:
             if variant.FILTER is not None:
@@ -281,12 +223,6 @@ def run_predictions(
             gene_name = utils.get_gene_name(variant)
             gene_id = utils.get_gene_id(variant)  # version-stripped
 
-            # --- Extract additional metrics --------------------------------
-            vaf = utils.get_vaf(variant, tumor_index=1)
-            nmd_flag = utils.has_nmd(variant)
-            observed_tpm = tpm_lookup.get(gene_id, float('nan'))
-            expressed = (not np.isnan(observed_tpm)) and observed_tpm >= TPM_EXPRESSED_THRESHOLD
-
             ag_variant = genome.Variant(chrom, pos, ref, alt)
             start = max(1, pos - dna_length // 2)
             end = pos + dna_length // 2
@@ -298,29 +234,22 @@ def run_predictions(
                     model, interval, ag_variant, tissue_id,
                 )
 
-                # --- Score -------------------------------------------------
+                # --- Write raw API output only -----------------------------
                 ref_sum = float(np.sum(outputs.reference.rna_seq.values))
                 alt_sum = float(np.sum(outputs.alternate.rna_seq.values))
-                log2_fc = _compute_log2_fc(ref_sum, alt_sum)
-                status = _classify(log2_fc)
-                priority = _vaccine_priority(log2_fc, vaf, observed_tpm, nmd_flag)
-
-                tpm_str = f"{observed_tpm:.2f}" if not np.isnan(observed_tpm) else "."
-                vaf_str = f"{vaf:.3f}" if not np.isnan(vaf) else "."
 
                 line = (
                     f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}"
-                    f"\t{ref_sum:.2f}\t{alt_sum:.2f}\t{log2_fc:.4f}\t{status}"
-                    f"\t{vaf_str}\t{tpm_str}\t{expressed}\t{nmd_flag}\t{priority}\n"
+                    f"\t{ref_sum:.6f}\t{alt_sum:.6f}\n"
                 )
                 outfile.write(line)
                 outfile.flush()
                 count_saved += 1
 
                 logging.info(
-                    "[%d/%d] %s:%d %s — %s (log2FC=%.4f, VAF=%s, TPM=%s, NMD=%s, priority=%s)",
+                    "[%d/%d] %s:%d %s — ref=%.6f alt=%.6f",
                     count_saved, count_total, chrom, pos, gene_name,
-                    status, log2_fc, vaf_str, tpm_str, nmd_flag, priority,
+                    ref_sum, alt_sum,
                 )
 
             except Exception:
@@ -359,6 +288,5 @@ if __name__ == "__main__":
         vcf_file=args.vcf,
         output_file=args.output,
         tissue_id=args.tissue,
-        rna_file=args.rna,
         resume=args.resume,
     )
