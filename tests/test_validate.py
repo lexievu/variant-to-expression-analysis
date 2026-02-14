@@ -10,8 +10,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from importlib import import_module
-validate_mod = import_module('s5_validate')
+import s5_validate as validate_mod
 
 
 # ===================================================================

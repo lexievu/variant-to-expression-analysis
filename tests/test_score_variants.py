@@ -9,8 +9,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from importlib import import_module
-score_mod = import_module('s4_score_variants')
+import s4_score_variants as score_mod
 
 
 # ===================================================================
