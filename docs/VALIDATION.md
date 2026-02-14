@@ -69,6 +69,42 @@ That said, several patterns are worth noting:
 
 ---
 
+## GTEx Normal Lung Baseline Comparison
+
+To distinguish tumour-specific expression changes from normal lung biology, we compared observed tumour TPM against **GTEx v8 median TPM** for normal lung tissue (queried via the [GTEx Portal API](https://gtexportal.org/api/v2)).
+
+| Gene | Tumour TPM | GTEx Lung TPM | Tumour/GTEx | Classification |
+|------|-----------|---------------|-------------|----------------|
+| TTC7A | 26.33 | 30.76 | 0.86 | comparable |
+| FAM107A | 10.14 | 100.48 | 0.10 | comparable |
+| ELFN1-AS1 | 0.44 | 0.08 | 5.34 | tissue-normal silence |
+| LAMC3 | 25.02 | 42.06 | 0.59 | comparable |
+| TMTC1 | 4.90 | 13.61 | 0.36 | comparable |
+| MMP25 | 4.47 | 24.08 | 0.19 | comparable |
+| ERBB2 | 222.22 | 47.78 | 4.65 | tumour over-expression |
+| DOT1L | 6.31 | 28.86 | 0.22 | comparable |
+
+**Classification criteria:**
+- **Tissue-normal silence** — TPM < 1 in both tumour and GTEx (gene is normally low in lung)
+- **Tumour-specific silencing** — TPM < 1 in tumour but ≥ 1 in GTEx (potential loss-of-expression hit)
+- **Tumour over-expression** — tumour TPM ≥ 4× GTEx median
+- **Comparable** — similar expression levels in both
+
+### Key findings
+
+1. **ELFN1-AS1** (the only silenced gene) is classified as **tissue-normal silence** — it has a median of just 0.08 TPM in GTEx normal lung. Its low expression in the tumour (0.44 TPM) is consistent with normal lung biology, not a tumour-specific silencing event.
+
+2. **ERBB2** shows **tumour over-expression** (4.65× normal). This is consistent with known ERBB2/HER2 amplification in a subset of lung adenocarcinomas. Despite being flagged as LOW vaccine priority (due to NMD), its over-expression makes it a well-established therapeutic target.
+
+3. **FAM107A** has a tumour/GTEx ratio of just 0.10 — it is expressed at 10.14 TPM in the tumour but 100.48 TPM in normal lung. While both are above the expressed threshold, this 10-fold *under*-expression in the tumour may reflect tumour-specific down-regulation (FAM107A is a known tumour suppressor).
+
+4. **No tumour-specific silencing** was detected — no gene crossed from expressed in GTEx to silenced in the tumour. This limits the set of candidate loss-of-expression hits.
+
+Full data: [`output/gtex_comparison.csv`](../output/gtex_comparison.csv)
+Script: [`src/6_gtex_baseline.py`](../src/6_gtex_baseline.py)
+
+---
+
 ## Caveats
 
 1. **Sample size is very small (n = 8).** Correlation statistics have low power and should be interpreted with extreme caution. These results are exploratory, not confirmatory.
@@ -102,5 +138,5 @@ All plots and the full influence/power analysis are in [`notebooks/prediction_vs
 ## Next Steps
 
 - [ ] Expand to HIGH + MODERATE impact variants (46 total) for better statistical power
-- [ ] Add GTEx lung baselines to distinguish tumour-specific from tissue-normal expression
+- [x] ~~Add GTEx lung baselines to distinguish tumour-specific from tissue-normal expression~~ → See GTEx section above.
 - [ ] Consider per-gene normalisation of AlphaGenome output (divide by window gene count) for a fairer comparison with TPM

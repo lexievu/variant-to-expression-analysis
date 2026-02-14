@@ -6,6 +6,7 @@ RAW_PREDICTIONS = "output/raw_predictions.tsv"
 SCORED_VARIANTS = "output/scored_variants.tsv"
 VALIDATION_TABLE = "output/validation_table.csv"
 VALIDATION_CORRELATIONS = "output/validation_correlations.csv"
+GTEX_COMPARISON = "output/gtex_comparison.csv"
 
 # VEP impact levels to retain during filtering.
 # HIGH  = stop_gained, frameshift, splice_donor/acceptor, etc.
