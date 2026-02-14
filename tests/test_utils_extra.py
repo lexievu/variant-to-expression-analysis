@@ -1,15 +1,12 @@
 """Tests for untested functions in src/utils.py: get_vaf, has_nmd, load_tpm_lookup."""
 
 import os
-import sys
 import tempfile
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-import utils
+from src import utils
 
 
 # ---------------------------------------------------------------------------

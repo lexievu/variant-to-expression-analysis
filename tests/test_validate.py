@@ -1,16 +1,13 @@
 """Tests for src/s5_validate.py — correlation and data-loading logic."""
 
 import os
-import sys
 import tempfile
 
 import numpy as np
 import pandas as pd
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-import s5_validate as validate_mod
+from src import s5_validate as validate_mod
 
 
 # ===================================================================
@@ -138,7 +135,7 @@ class TestValidateParseArgs:
 
     def test_defaults(self):
         args = validate_mod.parse_args([])
-        from constants import SCORED_VARIANTS, EXAMPLE_RNA_PATH
+        from src.constants import SCORED_VARIANTS, EXAMPLE_RNA_PATH
         assert args.scored == SCORED_VARIANTS
         assert args.rna == EXAMPLE_RNA_PATH
 

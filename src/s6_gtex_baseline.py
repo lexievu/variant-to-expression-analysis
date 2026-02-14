@@ -31,8 +31,9 @@ import time
 import pandas as pd
 import requests
 
-from constants import VALIDATION_TABLE, GTEX_COMPARISON
-import utils
+from src.constants import VALIDATION_TABLE, GTEX_COMPARISON, LOG_DIR
+from src import utils
+from src.exceptions import PipelineInputError
 
 # ---------------------------------------------------------------------------
 # GTEx API configuration
@@ -48,7 +49,7 @@ OVEREXPR_FOLD = 4.0             # tumour/GTEx ratio above this → "over-express
 # Rate-limit: be polite to the public API
 API_DELAY = 0.3  # seconds between requests
 
-LOG_FILENAME = "log/gtex_baseline.log"
+LOG_FILENAME = str(LOG_DIR / "gtex_baseline.log")
 
 
 # ---------------------------------------------------------------------------
@@ -210,9 +211,7 @@ def gtex_baseline(
 ):
     """Load the validation table, query GTEx, and write the comparison CSV."""
 
-    if not os.path.isfile(table_path):
-        logging.critical("Validation table not found: %s", table_path)
-        sys.exit(1)
+    utils.validate_file(table_path, "Validation table")
 
     # --- Load validation table ---------------------------------------------
     df = pd.read_csv(table_path)
@@ -251,27 +250,25 @@ def gtex_baseline(
     df[available].to_csv(output_path, index=False)
     logging.info("GTEx comparison → %s (%d rows)", output_path, len(df))
 
-    # --- Console summary ---------------------------------------------------
-    print(f"\n{'='*70}")
-    print("  GTEx Baseline Comparison")
-    print(f"{'='*70}")
-    print(f"  Tissue:  {tissue}")
-    print(f"  Genes:   {len(gene_ids)}")
-    print(f"  Output:  {output_path}")
-    print(f"{'='*70}\n")
+    # --- Summary ------------------------------------------------------------
+    logging.info("="*70)
+    logging.info("  GTEx Baseline Comparison")
+    logging.info("="*70)
+    logging.info("  Tissue:  %s", tissue)
+    logging.info("  Genes:   %d", len(gene_ids))
+    logging.info("  Output:  %s", output_path)
+    logging.info("="*70)
 
     summary = df[["GENE", "OBSERVED_TPM", "GTEX_LUNG_TPM",
                    "TUMOUR_VS_GTEX_RATIO", "SILENCING_CLASS"]].copy()
     summary.columns = ["Gene", "Tumour TPM", "GTEx Lung TPM",
                         "Tumour/GTEx", "Classification"]
-    print(summary.to_string(index=False))
-    print()
+    logging.info("\n%s", summary.to_string(index=False))
 
     # Classification counts
-    print("Classification summary:")
+    logging.info("Classification summary:")
     for cls, count in df["SILENCING_CLASS"].value_counts().items():
-        print(f"  {cls}: {count}")
-    print()
+        logging.info("  %s: %d", cls, count)
 
 
 # ---------------------------------------------------------------------------
@@ -281,8 +278,12 @@ if __name__ == "__main__":
     utils.setup_logging(LOG_FILENAME)
     args = parse_args()
     logging.info("Config: %s", vars(args))
-    gtex_baseline(
-        table_path=args.table,
-        output_path=args.output,
-        tissue=args.tissue,
-    )
+    try:
+        gtex_baseline(
+            table_path=args.table,
+            output_path=args.output,
+            tissue=args.tissue,
+        )
+    except PipelineInputError as exc:
+        logging.critical("%s", exc)
+        sys.exit(1)

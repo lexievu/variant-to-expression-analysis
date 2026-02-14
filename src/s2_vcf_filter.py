@@ -2,12 +2,12 @@ import argparse
 import logging
 import pandas as pd
 from cyvcf2 import VCF, Writer
-import utils
-from constants import DATA_PATH, EXAMPLE_RNA_PATH, DEFAULT_IMPACT_LEVELS
+from src import utils
+from src.constants import DATA_PATH, EXAMPLE_RNA_PATH, DEFAULT_IMPACT_LEVELS, LOG_DIR, OUTPUT_DIR
 
 # --- 1. DEFAULTS ---
-DEFAULT_OUTPUT = 'output/high_impact_variants.vcf'
-LOG_FILENAME = 'log/vcf_filter.log'
+DEFAULT_OUTPUT = str(OUTPUT_DIR / 'high_impact_variants.vcf')
+LOG_FILENAME = str(LOG_DIR / 'vcf_filter.log')
 
 
 def parse_args(argv=None):

@@ -1,13 +1,8 @@
 """Tests for src/s6_gtex_baseline.py — classification logic."""
 
-import os
-import sys
-
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-import s6_gtex_baseline as gtex_mod
+from src import s6_gtex_baseline as gtex_mod
 
 # ===================================================================
 # classify_silencing

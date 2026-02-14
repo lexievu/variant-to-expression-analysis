@@ -6,11 +6,13 @@ channels:
 dependencies:
   - python=3.10
   - cyvcf2=0.31.4
-  - numpy
-  - pandas
+  - numpy>=1.24,<2
+  - pandas>=2.0,<3
+  - scipy>=1.11,<2
   - pip
   - pip:
-      - pytest
-      - python-dotenv
+      - pytest>=7.4,<9
+      - python-dotenv>=1.0,<2
       - alphagenome
-      - requests
+      - requests>=2.31,<3
+      - -e .

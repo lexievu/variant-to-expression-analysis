@@ -25,18 +25,20 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from constants import (
+from src.constants import (
     EXAMPLE_RNA_PATH,
     SCORED_VARIANTS,
     VALIDATION_TABLE,
     VALIDATION_CORRELATIONS,
+    LOG_DIR,
 )
-import utils
+from src import utils
+from src.exceptions import PipelineInputError
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-LOG_FILENAME = "log/validation.log"
+LOG_FILENAME = str(LOG_DIR / "validation.log")
 TPM_EXPRESSED_THRESHOLD = 1.0
 
 
@@ -175,9 +177,7 @@ def validate(
 ):
     """Join predictions with RNA-seq and write CSV outputs."""
 
-    if not os.path.isfile(scored_path):
-        logging.critical("Scored variants file not found: %s", scored_path)
-        sys.exit(1)
+    utils.validate_file(scored_path, "Scored variants file")
 
     # --- Load & join -------------------------------------------------------
     scored = load_scored(scored_path)
@@ -215,16 +215,14 @@ def validate(
     corr_df.to_csv(correlations_path, index=False)
     logging.info("Correlations → %s (%d comparisons)", correlations_path, len(corr_df))
 
-    # --- Print summary to console ------------------------------------------
-    print(f"\n{'='*60}")
-    print("  Validation outputs")
-    print(f"{'='*60}")
-    print(f"  Table:        {table_path}  ({len(df)} variants)")
-    print(f"  Correlations: {correlations_path}  ({len(corr_df)} comparisons)")
-    print(f"{'='*60}")
-    print()
-    print(corr_df.to_string(index=False))
-    print()
+    # --- Summary ------------------------------------------------------------
+    logging.info("="*60)
+    logging.info("  Validation outputs")
+    logging.info("="*60)
+    logging.info("  Table:        %s  (%d variants)", table_path, len(df))
+    logging.info("  Correlations: %s  (%d comparisons)", correlations_path, len(corr_df))
+    logging.info("="*60)
+    logging.info("\n%s", corr_df.to_string(index=False))
 
 
 # ---------------------------------------------------------------------------
@@ -234,9 +232,13 @@ if __name__ == "__main__":
     utils.setup_logging(LOG_FILENAME)
     args = parse_args()
     logging.info("Config: %s", vars(args))
-    validate(
-        scored_path=args.scored,
-        rna_path=args.rna,
-        table_path=args.table,
-        correlations_path=args.correlations,
-    )
+    try:
+        validate(
+            scored_path=args.scored,
+            rna_path=args.rna,
+            table_path=args.table,
+            correlations_path=args.correlations,
+        )
+    except PipelineInputError as exc:
+        logging.critical("%s", exc)
+        sys.exit(1)

@@ -37,13 +37,14 @@ from alphagenome.models import dna_client
 from alphagenome.data import genome
 from dotenv import load_dotenv
 
-from constants import HIGH_IMPACT_VCF, RAW_PREDICTIONS
-import utils
+from src.constants import HIGH_IMPACT_VCF, RAW_PREDICTIONS, LOG_DIR, DOTENV_PATH
+from src import utils
+from src.exceptions import PipelineInputError
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-LOG_FILENAME = "log/gene_expression_prediction.log"
+LOG_FILENAME = str(LOG_DIR / "gene_expression_prediction.log")
 DEFAULT_VCF = HIGH_IMPACT_VCF
 DEFAULT_OUTPUT = RAW_PREDICTIONS
 DEFAULT_TISSUE = "UBERON:0002048"  # Lung
@@ -162,15 +163,14 @@ def run_predictions(
     """Query AlphaGenome for each variant and write raw predictions."""
 
     # --- Validate inputs ---------------------------------------------------
-    load_dotenv()
+    load_dotenv(DOTENV_PATH)
     api_key = os.getenv("ALPHAGENOME_API_KEY")
     if not api_key:
-        logging.critical("ALPHAGENOME_API_KEY not set in environment or .env")
-        sys.exit(1)
+        raise PipelineInputError(
+            "ALPHAGENOME_API_KEY not set in environment or .env"
+        )
 
-    if not os.path.isfile(vcf_file):
-        logging.critical("VCF file not found: %s", vcf_file)
-        sys.exit(1)
+    utils.validate_file(vcf_file, "Input VCF")
 
     # --- Checkpoint --------------------------------------------------------
     already_done = set()
@@ -284,9 +284,13 @@ if __name__ == "__main__":
     utils.setup_logging(LOG_FILENAME)
     args = parse_args()
     logging.info("Config: %s", vars(args))
-    run_predictions(
-        vcf_file=args.vcf,
-        output_file=args.output,
-        tissue_id=args.tissue,
-        resume=args.resume,
-    )
+    try:
+        run_predictions(
+            vcf_file=args.vcf,
+            output_file=args.output,
+            tissue_id=args.tissue,
+            resume=args.resume,
+        )
+    except PipelineInputError as exc:
+        logging.critical("%s", exc)
+        sys.exit(1)

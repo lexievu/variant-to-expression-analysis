@@ -1,15 +1,11 @@
 """Tests for src/s4_score_variants.py — scoring and vaccine-priority logic."""
 
-import sys
-import os
 import math
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-import s4_score_variants as score_mod
+from src import s4_score_variants as score_mod
 
 
 # ===================================================================
@@ -181,7 +177,7 @@ class TestScoreParseArgs:
 
     def test_defaults(self):
         args = score_mod.parse_args([])
-        from constants import RAW_PREDICTIONS, HIGH_IMPACT_VCF, EXAMPLE_RNA_PATH, SCORED_VARIANTS
+        from src.constants import RAW_PREDICTIONS, HIGH_IMPACT_VCF, EXAMPLE_RNA_PATH, SCORED_VARIANTS
         assert args.predictions == RAW_PREDICTIONS
         assert args.vcf == HIGH_IMPACT_VCF
         assert args.rna == EXAMPLE_RNA_PATH

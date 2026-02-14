@@ -1,15 +1,11 @@
 """Tests for src/utils.py — CSQ annotation parsing utilities."""
 
-import sys
-import os
 import logging
 import tempfile
+import os
 import pytest
 
-# Add src/ to path so we can import utils directly
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-
-import utils
+from src import utils
 
 
 # ---------------------------------------------------------------------------
@@ -183,9 +179,7 @@ class TestParseCsq:
 
 # s2_vcf_filter no longer has top-level side effects (logging is deferred
 # to setup_logging()), so we can import directly.
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
-from importlib import import_module
-vcf_filter = import_module('s2_vcf_filter')
+from src import s2_vcf_filter as vcf_filter
 
 
 class TestParseCsqField:
@@ -251,7 +245,7 @@ class TestParseArgs:
 
     def test_defaults(self):
         args = vcf_filter.parse_args([])
-        from constants import DATA_PATH, EXAMPLE_RNA_PATH, DEFAULT_IMPACT_LEVELS
+        from src.constants import DATA_PATH, EXAMPLE_RNA_PATH, DEFAULT_IMPACT_LEVELS
         assert args.vcf == DATA_PATH
         assert args.rna == EXAMPLE_RNA_PATH
         assert args.output == vcf_filter.DEFAULT_OUTPUT

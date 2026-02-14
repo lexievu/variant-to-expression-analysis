@@ -10,9 +10,15 @@ CSQ field layout (pipe-delimited, comma-separated transcripts):
 """
 
 import logging
+import re
 
 import numpy as np
 import pandas as pd
+
+from src.exceptions import PipelineInputError
+
+# Ensembl gene ID pattern: ENSG followed by 11 digits, optional .version
+_ENSEMBL_RE = re.compile(r"^ENSG\d{11}(\.\d+)?$")
 
 
 def setup_logging(log_file, level=logging.INFO):
@@ -168,3 +174,31 @@ def load_tpm_lookup(rna_file):
     except Exception as e:
         logging.error("Failed to load TPM lookup from %s: %s", rna_file, e)
         return {}
+
+
+# ---------------------------------------------------------------------------
+# Input validation
+# ---------------------------------------------------------------------------
+
+def validate_gene_id(gene_id):
+    """Return True if *gene_id* looks like a valid Ensembl gene ID.
+
+    Accepts both versioned (``ENSG00000141510.18``) and stripped
+    (``ENSG00000141510``) forms.
+    """
+    return bool(_ENSEMBL_RE.match(gene_id))
+
+
+def validate_file(path, label="file"):
+    """Raise `PipelineInputError` if *path* does not exist.
+
+    Args:
+        path: Filesystem path to check.
+        label: Human-readable name used in the error message.
+
+    Raises:
+        PipelineInputError: If the file is missing.
+    """
+    import os
+    if not os.path.isfile(path):
+        raise PipelineInputError(f"{label} not found: {path}")

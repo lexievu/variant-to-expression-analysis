@@ -30,18 +30,20 @@ import numpy as np
 import pandas as pd
 from cyvcf2 import VCF
 
-from constants import (
+from src.constants import (
     HIGH_IMPACT_VCF,
     EXAMPLE_RNA_PATH,
     RAW_PREDICTIONS,
     SCORED_VARIANTS,
+    LOG_DIR,
 )
-import utils
+from src import utils
+from src.exceptions import PipelineInputError
 
 # ---------------------------------------------------------------------------
 # Defaults
 # ---------------------------------------------------------------------------
-LOG_FILENAME = "log/score_variants.log"
+LOG_FILENAME = str(LOG_DIR / "score_variants.log")
 
 # Expression fold-change thresholds
 FC_GAIN_THRESHOLD = 1.0
@@ -173,9 +175,7 @@ def score_variants(
     """Read raw predictions, enrich with biological metrics, write scored TSV."""
 
     # --- Validate inputs ---------------------------------------------------
-    if not os.path.isfile(predictions_file):
-        logging.critical("Raw predictions file not found: %s", predictions_file)
-        sys.exit(1)
+    utils.validate_file(predictions_file, "Raw predictions file")
 
     # --- Load supporting data ----------------------------------------------
     tpm_lookup = utils.load_tpm_lookup(rna_file)
@@ -242,9 +242,13 @@ if __name__ == "__main__":
     utils.setup_logging(LOG_FILENAME)
     args = parse_args()
     logging.info("Config: %s", vars(args))
-    score_variants(
-        predictions_file=args.predictions,
-        vcf_file=args.vcf,
-        rna_file=args.rna,
-        output_file=args.output,
-    )
+    try:
+        score_variants(
+            predictions_file=args.predictions,
+            vcf_file=args.vcf,
+            rna_file=args.rna,
+            output_file=args.output,
+        )
+    except PipelineInputError as exc:
+        logging.critical("%s", exc)
+        sys.exit(1)
