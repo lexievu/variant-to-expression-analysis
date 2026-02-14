@@ -7,9 +7,7 @@ import pytest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
-from importlib import import_module
-gtex_mod = import_module('s6_gtex_baseline')
-
+import s6_gtex_baseline as gtex_mod
 
 # ===================================================================
 # classify_silencing
