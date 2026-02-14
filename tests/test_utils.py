@@ -2,6 +2,8 @@
 
 import sys
 import os
+import logging
+import tempfile
 import pytest
 
 # Add src/ to path so we can import utils directly
@@ -68,6 +70,14 @@ class TestGetGeneName:
         # so it returns the SYMBOL from the first transcript
         assert utils.get_gene_name(v) == "TP53"
 
+    def test_multi_transcript_quirk_no_comma_split(self):
+        # get_gene_name does a raw split('|') without first splitting by comma.
+        # This works because index 3 always falls within the first transcript's
+        # fields. Document this behaviour so a future refactor doesn't break it.
+        csq = "A|cons1|HIGH|GENE_A|ENSG_A|x,B|cons2|LOW|GENE_B|ENSG_B|y"
+        v = MockVariant(csq)
+        assert utils.get_gene_name(v) == "GENE_A"
+
     def test_empty_csq_string(self):
         v = MockVariant("")
         # Empty string is truthy-ish for `if csq:` — but split gives [""]
@@ -104,6 +114,15 @@ class TestGetGeneId:
     def test_empty_csq(self):
         v = MockVariant("")
         assert utils.get_gene_id(v) == "."
+
+    def test_multi_transcript_returns_first_id(self):
+        # Like get_gene_name, get_gene_id does a raw split('|') without
+        # first splitting by comma, so it returns the Gene (index 4) from
+        # the first transcript.
+        csq = "A|cons1|HIGH|GENE_A|ENSG_FIRST.5|x,B|cons2|LOW|GENE_B|ENSG_SECOND.3|y"
+        v = MockVariant(csq)
+        assert utils.get_gene_id(v) == "ENSG_FIRST"
+        assert utils.get_gene_id(v, strip_version=False) == "ENSG_FIRST.5"
 
 
 # ===================================================================
@@ -214,6 +233,14 @@ class TestParseCsqField:
         v = MockVariant(None)
         assert vcf_filter.parse_csq_field(v, {'ENSG00000141510'}, {'HIGH'}) == []
 
+    def test_skips_low_impact(self):
+        """LOW impact should be excluded even when gene is in the valid set."""
+        csq = "T|synonymous_variant|LOW|BRCA1|ENSG00000012048.23|extra"
+        v = MockVariant(csq)
+        genes = {'ENSG00000012048'}
+        assert vcf_filter.parse_csq_field(v, genes, {'HIGH'}) == []
+        assert vcf_filter.parse_csq_field(v, genes, {'HIGH', 'MODERATE'}) == []
+
 
 # ===================================================================
 # parse_args (CLI from 2_vcf_filter.py)
@@ -250,3 +277,160 @@ class TestParseArgs:
         args = vcf_filter.parse_args(['--vcf', 'a.vcf', '--rna', 'b.csv'])
         assert args.vcf == 'a.vcf'
         assert args.rna == 'b.csv'
+
+    def test_whitespace_in_impact(self):
+        """Spaces around commas should be stripped."""
+        args = vcf_filter.parse_args(['--impact', 'HIGH, MODERATE'])
+        assert args.impact == {'HIGH', 'MODERATE'}
+
+    def test_trailing_comma_produces_empty_element(self):
+        """A trailing comma will produce an empty string element.
+        Document this edge-case (not necessarily desirable, but current behaviour)."""
+        args = vcf_filter.parse_args(['--impact', 'HIGH,'])
+        assert '' in args.impact  # empty string from trailing comma
+
+    def test_unknown_impact_accepted(self):
+        """parse_args does not validate impact values — any string is accepted."""
+        args = vcf_filter.parse_args(['--impact', 'BANANA'])
+        assert args.impact == {'BANANA'}
+
+
+# ===================================================================
+# setup_logging (from utils.py)
+# ===================================================================
+
+class TestSetupLogging:
+    """Test the shared logging configuration helper."""
+
+    def _reset_root_logger(self):
+        """Remove all handlers from the root logger between tests."""
+        root = logging.getLogger()
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+            h.close()
+        root.setLevel(logging.WARNING)  # Reset to default level
+
+    def setup_method(self):
+        self._saved_handlers = logging.getLogger().handlers[:]
+        self._reset_root_logger()
+
+    def teardown_method(self):
+        self._reset_root_logger()
+        # Restore any handlers that existed before (e.g. pytest's LogCaptureHandler)
+        root = logging.getLogger()
+        for h in self._saved_handlers:
+            root.addHandler(h)
+
+    @pytest.mark.no_capture
+    def test_creates_handlers(self):
+        """setup_logging should attach at least a StreamHandler."""
+        # Ensure no handlers exist
+        root = logging.getLogger()
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+
+        with tempfile.NamedTemporaryFile(suffix='.log', delete=False) as f:
+            log_path = f.name
+        try:
+            utils.setup_logging(log_path)
+            handler_types = {type(h) for h in root.handlers}
+            assert logging.FileHandler in handler_types
+            assert logging.StreamHandler in handler_types
+        finally:
+            os.unlink(log_path)
+
+    @pytest.mark.no_capture
+    def test_idempotent(self):
+        """Calling setup_logging twice should not duplicate handlers."""
+        root = logging.getLogger()
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+
+        with tempfile.NamedTemporaryFile(suffix='.log', delete=False) as f:
+            log_path = f.name
+        try:
+            utils.setup_logging(log_path)
+            count_after_first = len(root.handlers)
+            utils.setup_logging(log_path)
+            count_after_second = len(root.handlers)
+            # Guard clause `if not logger.handlers` prevents duplication
+            assert count_after_second == count_after_first
+        finally:
+            os.unlink(log_path)
+
+    @pytest.mark.no_capture
+    def test_custom_level(self):
+        """setup_logging should respect the level parameter."""
+        root = logging.getLogger()
+        for h in root.handlers[:]:
+            root.removeHandler(h)
+
+        with tempfile.NamedTemporaryFile(suffix='.log', delete=False) as f:
+            log_path = f.name
+        try:
+            utils.setup_logging(log_path, level=logging.DEBUG)
+            assert root.level == logging.DEBUG
+        finally:
+            os.unlink(log_path)
+
+
+# ===================================================================
+# load_rna_gene_ids (from 2_vcf_filter.py)
+# ===================================================================
+
+class TestLoadRnaGeneIds:
+    """Test the RNA gene-id loading function from the filter script."""
+
+    def _write_csv(self, lines):
+        """Helper to write lines to a temp CSV file."""
+        f = tempfile.NamedTemporaryFile(
+            mode='w', suffix='.csv', delete=False
+        )
+        f.write('\n'.join(lines) + '\n')
+        f.close()
+        return f.name
+
+    def test_strips_version_suffixes(self):
+        path = self._write_csv([
+            'gene_id,gene_name',
+            'ENSG00000141510.18,TP53',
+            'ENSG00000133703.13,KRAS',
+        ])
+        try:
+            gene_ids = vcf_filter.load_rna_gene_ids(path)
+            assert 'ENSG00000141510' in gene_ids
+            assert 'ENSG00000133703' in gene_ids
+            # Version-suffixed form should NOT be present
+            assert 'ENSG00000141510.18' not in gene_ids
+        finally:
+            os.unlink(path)
+
+    def test_header_row_excluded(self):
+        """The first row is used as column headers by pandas, so it should
+        not appear as a gene_id value."""
+        path = self._write_csv([
+            'gene_id,gene_name',
+            'ENSG00000141510.18,TP53',
+        ])
+        try:
+            gene_ids = vcf_filter.load_rna_gene_ids(path)
+            assert 'gene_id' not in gene_ids
+        finally:
+            os.unlink(path)
+
+    def test_includes_non_ensembl_rows(self):
+        """Non-Ensembl IDs (no dot) should pass through as-is."""
+        path = self._write_csv([
+            'gene_id,gene_name',
+            'SOME_CUSTOM_ID,MYSTERY',
+        ])
+        try:
+            gene_ids = vcf_filter.load_rna_gene_ids(path)
+            assert 'SOME_CUSTOM_ID' in gene_ids
+        finally:
+            os.unlink(path)
+
+    def test_missing_file_returns_empty(self):
+        """A non-existent file should return an empty set (error is logged)."""
+        gene_ids = vcf_filter.load_rna_gene_ids('/tmp/this_file_does_not_exist_12345.csv')
+        assert gene_ids == set()
