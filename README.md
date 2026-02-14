@@ -140,6 +140,8 @@ Tests also run automatically on every push/PR to `main` via GitHub Actions.
 | Gain threshold | log₂ FC > 1.0 |
 | Loss threshold | log₂ FC < −1.0 |
 
+For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priority), see [docs/METRICS.md](docs/METRICS.md).
+
 ---
 
 ## License

@@ -11,6 +11,9 @@ CSQ field layout (pipe-delimited, comma-separated transcripts):
 
 import logging
 
+import numpy as np
+import pandas as pd
+
 
 def setup_logging(log_file, level=logging.INFO):
     """Configure structured logging to *log_file* and the console.
@@ -89,3 +92,79 @@ def parse_csq(variant):
             'gene_id_stripped': gene_id_raw.split('.')[0] if '.' in gene_id_raw else gene_id_raw,
         })
     return results
+
+
+# ---------------------------------------------------------------------------
+# Variant Allele Frequency (VAF)
+# ---------------------------------------------------------------------------
+
+def get_vaf(variant, tumor_index=1):
+    """Return the tumour variant allele frequency from FORMAT/AF.
+
+    Args:
+        variant: A cyvcf2 Variant object.
+        tumor_index: Sample index for the tumour (default 1, as in
+                     NORMAL=0, TUMOR=1 for MuTect2 VCFs).
+
+    Returns:
+        float VAF, or ``np.nan`` if the field is unavailable.
+    """
+    try:
+        af = variant.format('AF')
+        if af is not None:
+            return float(af[tumor_index][0])
+    except (IndexError, TypeError, KeyError):
+        pass
+    return float('nan')
+
+
+# ---------------------------------------------------------------------------
+# Nonsense-Mediated Decay (NMD)
+# ---------------------------------------------------------------------------
+
+def has_nmd(variant):
+    """Check whether any CSQ transcript contains an NMD annotation.
+
+    Looks for ``NMD_transcript_variant`` in the Consequence field
+    (CSQ index 1) across all transcripts.
+
+    Returns:
+        True if at least one transcript is annotated with NMD.
+    """
+    csq = variant.INFO.get('CSQ')
+    if not csq:
+        return False
+    for transcript in csq.split(','):
+        fields = transcript.split('|')
+        if len(fields) >= 2 and 'NMD' in fields[1]:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# RNA-seq TPM lookup
+# ---------------------------------------------------------------------------
+
+def load_tpm_lookup(rna_file):
+    """Build a gene-ID → TPM dict from an RNA-seq CSV.
+
+    Gene IDs are version-stripped (e.g. ENSG00000000003.15 →
+    ENSG00000000003) so they match the VCF CSQ annotations.
+
+    Args:
+        rna_file: Path to the RNA-seq CSV (``Example_RNA.csv``).
+                  Expected columns: ``gene_id``, ``tpm_unstranded``.
+
+    Returns:
+        dict mapping stripped gene ID → float TPM.
+    """
+    try:
+        df = pd.read_csv(rna_file, comment='#')
+        df = df[df['gene_id'].str.startswith('ENSG', na=False)].copy()
+        df['gene_id_stripped'] = df['gene_id'].apply(lambda x: x.split('.')[0])
+        lookup = dict(zip(df['gene_id_stripped'], df['tpm_unstranded'].astype(float)))
+        logging.info("Loaded TPM values for %d genes from %s", len(lookup), rna_file)
+        return lookup
+    except Exception as e:
+        logging.error("Failed to load TPM lookup from %s: %s", rna_file, e)
+        return {}
