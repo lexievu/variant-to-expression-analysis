@@ -4,7 +4,7 @@ channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python=3.11  # Changed from 3.10
   - cyvcf2=0.31.4
   - numpy>=2.3.5,<3.0a0
   - pandas>=2.0,<3
