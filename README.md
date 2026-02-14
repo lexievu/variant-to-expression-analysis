@@ -10,7 +10,7 @@ Somatic mutations in cancer can alter gene expression in ways that drive tumor p
 
 Starting from a TCGA LUAD paired tumor/normal VCF, the pipeline:
 
-1. **Filters** for high-confidence somatic variants (PASS, HIGH-impact VEP consequence, expressed in patient RNA-seq).
+1. **Filters** for high-confidence somatic variants (PASS, configurable VEP impact level, expressed in patient RNA-seq).
 2. Queries the **AlphaGenome API** to predict reference vs. alternate RNA-seq expression across a 1 MB window around each variant.
 3. Computes **log₂ fold-change** and classifies each variant as *Gain of Expression*, *Loss of Expression*, or *Neutral*.
 4. Links predictions to patient RNA-seq data via **harmonised Ensembl gene IDs** (GENCODE v36, version-stripped).
@@ -27,7 +27,7 @@ TCGA LUAD VCF (paired tumor/normal)
         ▼
 ┌───────────────────────────────────────────────┐
 │  2_vcf_filter.py                              │
-│  PASS + VEP HIGH-impact + RNA-seq gene match  │
+│  PASS + VEP impact (configurable) + RNA match │
 │  → output/high_impact_variants.vcf             │
 └──────────────────────┬────────────────────────┘
                        │
@@ -52,14 +52,19 @@ TCGA LUAD VCF (paired tumor/normal)
 │   ├── analysis.ipynb                   # Exploratory analysis & API prototyping
 │   └── alphagenome_input.csv            # Exported variant list for API queries
 ├── output/
-│   ├── high_impact_variants.vcf         # Filtered variants (PASS + HIGH impact + RNA match)
+│   ├── high_impact_variants.vcf         # Filtered variants (PASS + impact + RNA match)
 │   ├── alphagenome_hits.tsv             # AlphaGenome expression predictions
 │   └── ...                              # Intermediate outputs
 ├── src/
-│   ├── 2_vcf_filter.py                  # Variant filtering (PASS + VEP impact + RNA cross-ref)
-│   ├── 3_gene_expression_prediction.py   # AlphaGenome expression prediction
-│   ├── constants.py                     # Shared file paths
-│   └── utils.py                         # CSQ annotation parsing (gene name, gene ID, full parse)
+│   ├── 2_vcf_filter.py                  # Variant filtering (CLI: --impact, --output)
+│   ├── 3_gene_expression_prediction.py  # AlphaGenome expression prediction
+│   ├── constants.py                     # Shared configuration (UPPERCASE constants)
+│   └── utils.py                         # CSQ parsing, gene ID extraction, logging setup
+├── tests/
+│   └── test_utils.py                    # Unit & integration tests (31 tests)
+├── .github/workflows/
+│   └── tests.yml                        # CI: pytest on push/PR to main (micromamba)
+├── environment.yml                      # Conda environment spec (bioconda + conda-forge)
 ├── log/                                 # Filter run logs
 └── PLANNING.md                          # Execution roadmap & progress tracker
 ```
@@ -101,9 +106,22 @@ Activate the environment and run scripts sequentially:
 ```bash
 conda activate biotech_challenge
 
-python src/2_vcf_filter.py                 # → output/high_impact_variants.vcf
-python src/3_gene_expression_prediction.py  # → output/alphagenome_hits.tsv
+# Filter variants (defaults to HIGH impact; use --impact to change)
+python src/2_vcf_filter.py                              # → output/high_impact_variants.vcf
+python src/2_vcf_filter.py --impact HIGH,MODERATE        # Include missense variants
+python src/2_vcf_filter.py --impact HIGH -o custom.vcf   # Custom output path
+
+# Predict expression changes via AlphaGenome
+python src/3_gene_expression_prediction.py               # → output/alphagenome_hits.tsv
 ```
+
+### Running Tests
+
+```bash
+python -m pytest tests/ -v
+```
+
+Tests also run automatically on every push/PR to `main` via GitHub Actions.
 
 > **Tip:** The prediction script uses a small variant subset by default to keep API costs low during development. Adjust `constants.py` to process more variants.
 
