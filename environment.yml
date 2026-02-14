@@ -13,3 +13,4 @@ dependencies:
       - pytest
       - python-dotenv
       - alphagenome
+      - requests
