@@ -35,6 +35,7 @@ All sequence retrieval and mutation application happens server-side. The client 
 | Use case | Benefit | Verdict |
 |---|---|---|
 | **REF allele validation** — confirm VCF `REF` matches hg38 | Catch genome-build mismatches | **Low priority.** MuTect2 already validates REF during variant calling. A spot-check of the VCF `##reference=` header line is sufficient. |
+| **Gene/exon masking** — get exon coordinates for gene-level expression scoring | Focus predictions on target gene | **Not needed.** AlphaGenome's `GeneMaskLFCScorer` applies exon masks internally. We validated these against UCSC GENCODE (Pearson r = 0.9898, 8/8 gene name & strand matches). See `docs/GENE_DILUTION.md`. |
 | **Alternative model input** — feed raw DNA strings to Enformer, Sei, or other sequence→expression models | Enable multi-model comparison | **Not needed now.** Only relevant if a second model is added. AlphaGenome takes coordinates, not strings. |
 | **Sequence-context visualisation** — display ±50 bp flanking each variant for manual inspection | Useful for figures or reports | **Nice-to-have**, but a notebook one-liner with `pysam.FastaFile` against a local hg38 FASTA is simpler than HTTP calls to UCSC. |
 | **Genome build mismatch detection** — verify VCF is hg38, not hg19 | Prevent silent coordinate errors | **Cheaper alternatives exist.** Check the VCF header or compare a handful of REF alleles against a local FASTA. |
@@ -60,4 +61,9 @@ Neither of these requires the UCSC REST API.
 
 ## Decision
 
-**UCSC Genome Browser context retrieval is not needed.** AlphaGenome handles all sequence operations internally. This item is closed in the execution plan.
+**UCSC Genome Browser data is not needed for production runs.** AlphaGenome
+handles all sequence operations internally, and its built-in gene masks are
+functionally equivalent to UCSC GENCODE annotations (validated with Pearson
+r = 0.9898 across 8 variants; see `docs/GENE_DILUTION.md`). The UCSC REST
+API was useful as a one-time validation tool but is not a runtime dependency.
+This item is closed in the execution plan.
