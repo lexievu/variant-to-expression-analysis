@@ -1,112 +1,225 @@
+"""AlphaGenome expression-impact prediction for somatic variants.
+
+Reads a filtered VCF, queries the AlphaGenome API for each variant, and
+writes a TSV of predicted expression changes (log₂ fold-change).
+
+Robustness features
+-------------------
+* Exponential-backoff retry on transient API / network errors.
+* Configurable rate-limiting delay between API calls.
+* Full stack-trace logging on every failure.
+* Graceful file handling via context managers.
+* Input validation (API key, VCF path).
+* Progress counter so you can monitor long runs.
+"""
+
 import logging
+import os
+import sys
+import time
+import traceback
 
 import numpy as np
 from cyvcf2 import VCF
 from alphagenome.models import dna_client
 from alphagenome.data import genome
-import os
 from dotenv import load_dotenv
-from constants import DATA_PATH, EXAMPLE_RNA_PATH, QUICK_10
+
+from constants import QUICK_10
 import utils
 
-# Load variables from .env file into the environment
-load_dotenv()
-
-# --- 1. CONFIGURATION ---
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
 LOG_FILENAME = "log/gene_expression_prediction.log"
-API_KEY = os.getenv("ALPHAGENOME_API_KEY")
 VCF_FILE = QUICK_10
 OUTPUT_FILENAME = "output/alphagenome_hits.tsv"
-TISSUE_ID = 'UBERON:0002048'  # Lung
+TISSUE_ID = "UBERON:0002048"  # Lung
 DNA_SEQUENCE_LENGTH = 1_048_576
 
-utils.setup_logging(LOG_FILENAME)
+# Retry / rate-limit settings
+MAX_RETRIES = 3                 # attempts per variant (1 initial + retries)
+RETRY_BASE_DELAY = 2.0          # seconds; doubles each retry
+RATE_LIMIT_DELAY = 0.5          # seconds between successive API calls
 
-# --- 2. SETUP OUPUT FILE ---
-# We open the file in 'w' (write) mode
-outfile = open(OUTPUT_FILENAME, 'w')
+# Expression fold-change thresholds
+FC_GAIN_THRESHOLD = 1.0         # log2 FC > 1  → Gain_of_Expression
+FC_LOSS_THRESHOLD = -1.0        # log2 FC < -1 → Loss_of_Expression
 
-# Write the Header Line
-# \t means "tab", \n means "new line"
-header = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS\n"
-outfile.write(header)
-
-# --- 3. INITIALIZE ALPHAGENOME ---
-logging.info(f"Connecting to AlphaGenome and writing to '{OUTPUT_FILENAME}'...")
-model = dna_client.create(API_KEY)
-vcf = VCF(VCF_FILE)
-
-count_saved = 0
+HEADER = (
+    "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
+    "\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS\n"
+)
 
 
-for variant in vcf:
-    # (Optional) Skip variants that are not PASS if you haven't filtered yet
-    if variant.FILTER is not None:
-        continue
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    # --- 4. PREPARE INPUTS ---
-    chrom = variant.CHROM
-    pos = variant.POS
-    ref = variant.REF
-    alt = variant.ALT[0]
-    
-    gene_name = utils.get_gene_name(variant)
-    gene_id = utils.get_gene_id(variant)  # Ensembl ID, version-stripped
+def _predict_with_retry(model, interval, ag_variant, tissue_id,
+                        max_retries=MAX_RETRIES,
+                        base_delay=RETRY_BASE_DELAY):
+    """Call *model.predict_variant* with exponential-backoff retry.
 
-    # Define Variant & Interval for AlphaGenome
-    ag_variant = genome.Variant(chrom, pos, ref, alt)
-    start = max(1, pos - DNA_SEQUENCE_LENGTH // 2)
-    end = pos + DNA_SEQUENCE_LENGTH // 2
-    interval = genome.Interval(chrom, start, end)
+    Returns the prediction outputs on success, or raises the last
+    exception after all retries are exhausted.
+    """
+    last_exc = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return model.predict_variant(
+                interval=interval,
+                variant=ag_variant,
+                ontology_terms=[tissue_id],
+                requested_outputs=[dna_client.OutputType.RNA_SEQ],
+            )
+        except Exception as exc:
+            last_exc = exc
+            if attempt < max_retries:
+                delay = base_delay * (2 ** (attempt - 1))
+                logging.warning(
+                    "Attempt %d/%d failed (%s). Retrying in %.1fs…",
+                    attempt, max_retries, exc, delay,
+                )
+                time.sleep(delay)
+            else:
+                logging.error(
+                    "All %d attempts failed for variant. Last error: %s",
+                    max_retries, exc,
+                )
+    raise last_exc  # type: ignore[misc]
 
-    try:
-        # --- 5. PREDICT ---
-        outputs = model.predict_variant(
-            interval=interval,
-            variant=ag_variant,
-            ontology_terms=[TISSUE_ID],
-            requested_outputs=[dna_client.OutputType.RNA_SEQ]
+
+def _classify(log2_fc):
+    """Return a human-readable status label for a log₂ fold-change."""
+    if log2_fc > FC_GAIN_THRESHOLD:
+        return "Gain_of_Expression"
+    if log2_fc < FC_LOSS_THRESHOLD:
+        return "Loss_of_Expression"
+    return "Neutral"
+
+
+def _compute_log2_fc(ref_sum, alt_sum):
+    """Compute log₂ fold-change, guarding against division by zero."""
+    if ref_sum == 0 and alt_sum == 0:
+        return 0.0
+    return float(np.log2((alt_sum + 1e-9) / (ref_sum + 1e-9)))
+
+
+# ---------------------------------------------------------------------------
+# Main pipeline
+# ---------------------------------------------------------------------------
+
+def run_predictions(
+    vcf_file=VCF_FILE,
+    output_file=OUTPUT_FILENAME,
+    tissue_id=TISSUE_ID,
+    dna_length=DNA_SEQUENCE_LENGTH,
+):
+    """Iterate over variants in *vcf_file* and write AlphaGenome predictions."""
+
+    # --- Validate inputs ---------------------------------------------------
+    load_dotenv()
+    api_key = os.getenv("ALPHAGENOME_API_KEY")
+    if not api_key:
+        logging.critical("ALPHAGENOME_API_KEY not set in environment or .env")
+        sys.exit(1)
+
+    if not os.path.isfile(vcf_file):
+        logging.critical("VCF file not found: %s", vcf_file)
+        sys.exit(1)
+
+    # --- Initialise model & VCF --------------------------------------------
+    logging.info("Connecting to AlphaGenome…")
+    model = dna_client.create(api_key)
+    vcf = VCF(vcf_file)
+
+    count_processed = 0
+    count_saved = 0
+    count_errors = 0
+    start_time = time.time()
+
+    with open(output_file, "w") as outfile:
+        outfile.write(HEADER)
+
+        for variant in vcf:
+            if variant.FILTER is not None:
+                continue
+
+            # --- Prepare inputs --------------------------------------------
+            chrom = variant.CHROM
+            pos = variant.POS
+            ref = variant.REF
+
+            if not variant.ALT:
+                logging.warning("Skipping %s:%d — no ALT allele", chrom, pos)
+                continue
+            alt = variant.ALT[0]
+
+            gene_name = utils.get_gene_name(variant)
+            gene_id = utils.get_gene_id(variant)  # version-stripped
+
+            ag_variant = genome.Variant(chrom, pos, ref, alt)
+            start = max(1, pos - dna_length // 2)
+            end = pos + dna_length // 2
+            interval = genome.Interval(chrom, start, end)
+
+            count_processed += 1
+
+            try:
+                # --- Predict (with retry) ----------------------------------
+                outputs = _predict_with_retry(
+                    model, interval, ag_variant, tissue_id,
+                )
+
+                # --- Score -------------------------------------------------
+                ref_sum = float(np.sum(outputs.reference.rna_seq.values))
+                alt_sum = float(np.sum(outputs.alternate.rna_seq.values))
+                log2_fc = _compute_log2_fc(ref_sum, alt_sum)
+                status = _classify(log2_fc)
+
+                line = (
+                    f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}"
+                    f"\t{ref_sum:.2f}\t{alt_sum:.2f}\t{log2_fc:.4f}\t{status}\n"
+                )
+                outfile.write(line)
+                outfile.flush()  # persist each result immediately
+                count_saved += 1
+
+                logging.info(
+                    "[%d/%d] %s:%d %s — %s (log2FC=%.4f)",
+                    count_saved, count_processed, chrom, pos, gene_name,
+                    status, log2_fc,
+                )
+
+            except Exception:
+                count_errors += 1
+                logging.error(
+                    "Failed permanently at %s:%d (%s/%s). Traceback:\n%s",
+                    chrom, pos, ref, alt, traceback.format_exc(),
+                )
+
+            # --- Rate-limit between API calls ------------------------------
+            time.sleep(RATE_LIMIT_DELAY)
+
+    vcf.close()
+
+    # --- Summary -----------------------------------------------------------
+    elapsed = time.time() - start_time
+    logging.info(
+        "Done in %.1fs — processed %d variants, saved %d results, %d errors.",
+        elapsed, count_processed, count_saved, count_errors,
+    )
+    if count_errors:
+        logging.warning(
+            "%d variant(s) failed after all retries. See log for stack traces.",
+            count_errors,
         )
-        
-        # --- 6. CALCULATE SCORES ---
-        ref_track = outputs.reference.rna_seq.values
-        alt_track = outputs.alternate.rna_seq.values
-        
-        ref_sum = np.sum(ref_track)
-        alt_sum = np.sum(alt_track)
-        
-        # Calculate Fold Change (Log2)
-        # Avoid division by zero
-        if ref_sum == 0 and alt_sum == 0:
-            log2_fc = 0.0
-        else:
-            log2_fc = np.log2((alt_sum + 1e-9) / (ref_sum + 1e-9))
-        
-        # --- 7. FILTER & SAVE "INTERESTING" HITS ---
-        # Let's define "Interesting" as:
-        # 1. Fold change > 1.0 (Doubling of expression)
-        # 2. Fold change < -1.0 (Halving of expression)
-        
-        status = "Neutral"
-        
-        if log2_fc > 1.0:
-            status = "Gain_of_Expression"
-        elif log2_fc < -1.0:
-            status = "Loss_of_Expression"
 
-        # Format the line for the file
-        # .4f means "4 decimal places"
-        line = f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}\t{ref_sum:.2f}\t{alt_sum:.2f}\t{log2_fc:.4f}\t{status}\n"
-        outfile.write(line)
-        count_saved += 1
-        
-        # Optional: Print a progress indicator to terminal
-        logging.info(f"Saved hit: {gene_name} ({status})")
 
-    except Exception as e:
-        logging.error(f"Error at {chrom}:{pos} -> {e}")
-
-# --- 8. CLEANUP ---
-outfile.close()
-vcf.close()
-logging.info(f"Done! Saved {count_saved} interesting variants to {OUTPUT_FILENAME}")
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+if __name__ == "__main__":
+    utils.setup_logging(LOG_FILENAME)
+    run_predictions()
