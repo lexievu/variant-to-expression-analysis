@@ -2,9 +2,9 @@
 name = "variant-to-expression-analysis"
 version = "0.1.0"
 description = "Evaluate AlphaGenome expression predictions for cancer-associated DNA variants."
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
-    "numpy>=1.24,<2",
+    "numpy>=2.3.5,<3",
     "pandas>=2.0,<3",
     "cyvcf2>=0.31,<0.32",
     "python-dotenv>=1.0,<2",

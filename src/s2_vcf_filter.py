@@ -1,3 +1,28 @@
+"""Filter a TCGA somatic VCF for high-impact, expressed variants.
+
+Reads a paired tumour/normal VCF (GATK MuTect2) and an RNA-seq gene list,
+then writes a filtered VCF containing only variants that satisfy **all** of
+the following criteria:
+
+1. **PASS** — the variant passed MuTect2 quality filters.
+2. **Tumour genotype** — at least one ALT allele is present in the TUMOR
+   sample.
+3. **VEP impact** — the variant has a VEP Consequence Sequence (CSQ)
+   annotation at or above a configurable impact level (default: ``HIGH``).
+4. **RNA-seq expression** — the affected gene is present in the patient's
+   RNA-seq data, confirming that the locus is transcriptionally active.
+
+The output VCF feeds into ``s3_gene_expression_prediction.py`` for
+AlphaGenome expression prediction.
+
+Usage
+-----
+    python s2_vcf_filter.py                                   # defaults (HIGH impact)
+    python s2_vcf_filter.py --impact HIGH,MODERATE            # include missense variants
+    python s2_vcf_filter.py --impact HIGH -o custom.vcf       # custom output path
+    python s2_vcf_filter.py --vcf path/to/input.vcf.gz       # custom input VCF
+"""
+
 import argparse
 import logging
 import pandas as pd

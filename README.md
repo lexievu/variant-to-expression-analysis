@@ -13,9 +13,8 @@ Starting from a TCGA LUAD paired tumor/normal VCF, the pipeline:
 1. **Filters** for high-confidence somatic variants (PASS, configurable VEP impact level, expressed in patient RNA-seq).
 2. Queries the **AlphaGenome API** to predict reference vs. alternate RNA-seq expression across a 1 MB window around each variant.
 3. **Scores** raw predictions with biological context — log₂ fold-change, VAF, RNA-seq TPM, NMD, and a composite vaccine-priority label.
-4. Links predictions to patient RNA-seq data via **harmonised Ensembl gene IDs** (GENCODE v36, version-stripped).
-
-The results can be benchmarked against real patient RNA-seq data and GTEx expression baselines.
+4. **Validates** predictions against real patient RNA-seq data via Pearson/Spearman correlations (GENCODE v36, version-stripped gene IDs).
+5. **Compares** tumour expression to GTEx normal-tissue baselines to classify silencing status.
 
 ---
 
@@ -23,17 +22,17 @@ The results can be benchmarked against real patient RNA-seq data and GTEx expres
 
 ```
 TCGA LUAD VCF (paired tumor/normal)
-        │
-        ▼
+                      │
+                      ▼
 ┌─────────────────────────────────────────────────┐
-│  s2_vcf_filter.py                                │
+│  s2_vcf_filter.py                               │
 │  PASS + VEP impact (configurable) + RNA match   │
 │  → output/high_impact_variants.vcf              │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s3_gene_expression_prediction.py                │
+│  s3_gene_expression_prediction.py               │
 │  AlphaGenome API → raw ref/alt expression sums  │
 │  Retry, rate-limit, checkpoint/resume           │
 │  → output/raw_predictions.tsv                   │
@@ -41,10 +40,26 @@ TCGA LUAD VCF (paired tumor/normal)
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s4_score_variants.py                            │
-│  log₂ FC, VAF, TPM, NMD, vaccine priority      │
+│  s4_score_variants.py                           │
+│  log₂ FC, VAF, TPM, NMD, vaccine priority       │
 │  Re-runnable without API calls                  │
 │  → output/scored_variants.tsv                   │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│  s5_validate.py                                 │
+│  Pearson & Spearman correlation vs patient RNA  │
+│  → output/validation_table.csv                  │
+│  → output/validation_correlations.csv           │
+└─────────────────────┬───────────────────────────┘
+                      │
+                      ▼
+┌─────────────────────────────────────────────────┐
+│  s6_gtex_baseline.py                            │
+│  GTEx API → normal-tissue expression baselines  │
+│  Silencing classification per gene              │
+│  → output/gtex_comparison.csv                   │
 └─────────────────────────────────────────────────┘
 ```
 
@@ -98,7 +113,7 @@ TCGA LUAD VCF (paired tumor/normal)
 
 ### Prerequisites
 
-- Python 3.10+
+- Python 3.11+
 - A valid **AlphaGenome API key** (stored in a `.env` file at the project root)
 
 ### Installation
@@ -146,6 +161,14 @@ python src/s3_gene_expression_prediction.py --resume      # Resume interrupted r
 
 # Step 3: Score variants with biological context (cheap — no API)
 python src/s4_score_variants.py                           # → output/scored_variants.tsv
+
+# Step 4: Validate predictions against patient RNA-seq
+python src/s5_validate.py                                 # → output/validation_table.csv
+                                                          # → output/validation_correlations.csv
+
+# Step 5: Compare with GTEx normal-tissue baselines
+python src/s6_gtex_baseline.py                            # → output/gtex_comparison.csv
+python src/s6_gtex_baseline.py --tissue Lung              # default tissue
 ```
 
 ### Running Tests
