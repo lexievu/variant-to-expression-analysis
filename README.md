@@ -156,6 +156,7 @@ Tests also run automatically on every push/PR to `main` via GitHub Actions.
 
 For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priority), see [docs/METRICS.md](docs/METRICS.md).
 For initial prediction results and interpretation (**model predictions only — not yet validated**), see [docs/RESULTS.md](docs/RESULTS.md).
+For the RNA-seq correlation analysis, see [docs/VALIDATION.md](docs/VALIDATION.md).
 For why UCSC Genome Browser context retrieval is not needed, see [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md).
 
 ---

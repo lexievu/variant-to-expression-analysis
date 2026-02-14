@@ -4,6 +4,8 @@ QUICK_10 = "output/high_confidence_10.vcf"
 HIGH_IMPACT_VCF = "output/high_impact_variants.vcf"
 RAW_PREDICTIONS = "output/raw_predictions.tsv"
 SCORED_VARIANTS = "output/scored_variants.tsv"
+VALIDATION_TABLE = "output/validation_table.csv"
+VALIDATION_CORRELATIONS = "output/validation_correlations.csv"
 
 # VEP impact levels to retain during filtering.
 # HIGH  = stop_gained, frameshift, splice_donor/acceptor, etc.
