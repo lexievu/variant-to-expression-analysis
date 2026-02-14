@@ -56,26 +56,39 @@ TCGA LUAD VCF (paired tumor/normal)
 ├── data/
 │   ├── Example_RNA.csv                  # Patient RNA-seq data (GENCODE v36 gene IDs + TPM)
 │   └── VCF_File/                        # TCGA LUAD somatic VCF (MuTect2)
+├── docs/
+│   ├── METRICS.md                       # Scoring metric definitions
+│   ├── RESULTS.md                       # Initial prediction results
+│   ├── TEST_COVERAGE.md                 # Test coverage summary
+│   ├── UCSC_CONTEXT.md                  # UCSC Genome Browser context note
+│   └── VALIDATION.md                    # RNA-seq correlation analysis
 ├── notebooks/
-│   ├── analysis.ipynb                   # Exploratory analysis & API prototyping
-│   └── alphagenome_input.csv            # Exported variant list for API queries
-├── output/
-│   ├── high_impact_variants.vcf         # Filtered variants (PASS + impact + RNA match)
-│   ├── raw_predictions.tsv              # AlphaGenome raw expression sums
-│   ├── scored_variants.tsv              # Scored variants (FC, VAF, TPM, NMD, priority)
-│   └── ...                              # Intermediate outputs
+│   └── prediction_vs_rnaseq.ipynb       # Prediction vs RNA-seq exploration
+├── output/                              # Pipeline outputs (git-ignored data files)
 ├── src/
-│   ├── s2_vcf_filter.py                  # Variant filtering (CLI: --impact, --output)
-│   ├── s3_gene_expression_prediction.py  # AlphaGenome raw predictions (API, retry, resume)
-│   ├── s4_score_variants.py              # Biological scoring (VAF, TPM, NMD, priority)
-│   ├── constants.py                     # Shared configuration (UPPERCASE constants)
-│   └── utils.py                         # CSQ parsing, gene ID extraction, logging setup
-├── tests/
-│   └── test_utils.py                    # Unit & integration tests (44 tests)
+│   ├── __init__.py                      # Package marker
+│   ├── constants.py                     # Shared paths & configuration constants
+│   ├── exceptions.py                    # PipelineInputError exception
+│   ├── utils.py                         # CSQ parsing, gene ID lookup, validation helpers
+│   ├── s2_vcf_filter.py                 # Variant filtering (CLI: --impact, --output)
+│   ├── s3_gene_expression_prediction.py # AlphaGenome predictions (API, retry, resume)
+│   ├── s4_score_variants.py             # Biological scoring (VAF, TPM, NMD, priority)
+│   ├── s5_validate.py                   # Correlation analysis against patient RNA-seq
+│   └── s6_gtex_baseline.py              # GTEx normal-tissue expression comparison
+├── tests/                               # 180 unit & integration tests (77% coverage)
+│   ├── conftest.py                      # Shared fixtures
+│   ├── test_utils.py                    # Core utility tests
+│   ├── test_utils_extra.py              # Validation helper & VAF/NMD tests
+│   ├── test_prediction.py               # s3 prediction module tests
+│   ├── test_score_variants.py           # s4 scoring tests
+│   ├── test_validate.py                 # s5 validation tests
+│   └── test_gtex_baseline.py            # s6 GTEx baseline tests
 ├── .github/workflows/
 │   └── tests.yml                        # CI: pytest on push/PR to main (micromamba)
-├── environment.yml                      # Conda environment spec (bioconda + conda-forge)
-├── log/                                 # Filter run logs
+├── environment.yml                      # Conda environment spec (pinned deps)
+├── pyproject.toml                       # PEP 621 package metadata & build config
+├── .env.example                         # Template for API key configuration
+├── log/                                 # Run logs
 └── PLANNING.md                          # Execution roadmap & progress tracker
 ```
 
@@ -85,7 +98,7 @@ TCGA LUAD VCF (paired tumor/normal)
 
 ### Prerequisites
 
-- Python 3.9+
+- Python 3.10+
 - A valid **AlphaGenome API key** (stored in a `.env` file at the project root)
 
 ### Installation
@@ -95,18 +108,24 @@ TCGA LUAD VCF (paired tumor/normal)
 git clone https://github.com/<your-username>/variant-to-expression-analysis.git
 cd variant-to-expression-analysis
 
-# Create the conda environment
-conda create -n biotech_challenge python=3.10
+# Create the conda environment (installs all pinned deps + editable package)
+conda env create -f environment.yml
 conda activate biotech_challenge
-pip install cyvcf2 numpy pandas python-dotenv alphagenome
+```
+
+Alternatively, install with pip alone:
+
+```bash
+pip install -e ".[dev]"
 ```
 
 ### Configuration
 
-Create a `.env` file in the `src/` directory:
+Copy the example env file and add your API key:
 
-```
-ALPHAGENOME_API_KEY=your_api_key_here
+```bash
+cp .env.example .env
+# Edit .env and set ALPHAGENOME_API_KEY=your_real_key
 ```
 
 ### Running the Pipeline
@@ -132,10 +151,16 @@ python src/s4_score_variants.py                           # → output/scored_va
 ### Running Tests
 
 ```bash
+# Run all 180 tests
 python -m pytest tests/ -v
+
+# With coverage report
+python -m coverage run --source=src -m pytest tests/ -q
+python -m coverage report --show-missing
 ```
 
-Tests also run automatically on every push/PR to `main` via GitHub Actions.
+Tests also run automatically on every push/PR to `main` via GitHub Actions.  
+See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for a detailed coverage breakdown.
 
 > **Tip:** The prediction script uses a small variant subset by default to keep API costs low during development. Adjust `constants.py` to process more variants.
 
@@ -158,6 +183,7 @@ For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priori
 For initial prediction results and interpretation (**model predictions only — not yet validated**), see [docs/RESULTS.md](docs/RESULTS.md).
 For the RNA-seq correlation analysis, see [docs/VALIDATION.md](docs/VALIDATION.md).
 For why UCSC Genome Browser context retrieval is not needed, see [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md).
+For the test suite coverage summary, see [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md).
 
 ---
 
