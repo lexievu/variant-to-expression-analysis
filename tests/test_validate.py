@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from src import s5_validate as validate_mod
+from src.exceptions import PipelineInputError
 
 
 # ===================================================================
@@ -146,3 +147,114 @@ class TestValidateParseArgs:
     def test_custom_rna(self):
         args = validate_mod.parse_args(['--rna', 'my_rna.csv'])
         assert args.rna == 'my_rna.csv'
+
+
+# ===================================================================
+# compute_all_correlations
+# ===================================================================
+
+class TestComputeAllCorrelations:
+    """Test the batch correlation builder."""
+
+    def _make_df(self, n=10):
+        """Create a DataFrame with the columns expected by compute_all_correlations."""
+        rng = np.random.default_rng(42)
+        return pd.DataFrame({
+            "ALT_EXPR": rng.uniform(10, 1000, n),
+            "REF_EXPR": rng.uniform(10, 1000, n),
+            "LOG2_FC": rng.uniform(-2, 2, n),
+            "OBSERVED_TPM": rng.uniform(0, 50, n),
+        })
+
+    def test_returns_at_least_five_comparisons(self):
+        df = self._make_df()
+        rows = validate_mod.compute_all_correlations(df)
+        # 2 pred_cols × 2 transforms + LOG2_FC = 5 minimum
+        assert len(rows) >= 5
+
+    def test_includes_log10_transforms(self):
+        df = self._make_df()
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert any("log" in l.lower() for l in labels)
+
+    def test_with_unstranded_column(self):
+        df = self._make_df()
+        df["unstranded"] = np.random.default_rng(0).integers(100, 10000, len(df))
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert any("raw_counts" in l for l in labels)
+
+    def test_expressed_stratification(self):
+        """When enough expressed genes exist, an extra stratified row appears."""
+        df = self._make_df(20)
+        df["OBSERVED_TPM"] = np.random.default_rng(7).uniform(2, 100, 20)
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert any("expressed only" in l for l in labels)
+
+    def test_too_few_expressed_skips_stratification(self):
+        df = self._make_df(5)
+        df["OBSERVED_TPM"] = 0.1  # all below threshold
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert not any("expressed only" in l for l in labels)
+
+
+# ===================================================================
+# validate — end-to-end pipeline
+# ===================================================================
+
+class TestValidatePipeline:
+    """Test the full validation pipeline with temporary files."""
+
+    def _write_scored(self, tmp_dir):
+        path = os.path.join(tmp_dir, "scored.tsv")
+        with open(path, "w") as f:
+            f.write(
+                "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
+                "\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS"
+                "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
+            )
+            f.write(
+                "chr1\t100\tA\tT\tTP53\tENSG00000141510"
+                "\t100.0\t50.0\t-1.0\tNeutral"
+                "\t0.3\t42.5\tTrue\tFalse\tHIGH\n"
+            )
+        return path
+
+    def _write_rna(self, tmp_dir):
+        path = os.path.join(tmp_dir, "rna.csv")
+        with open(path, "w") as f:
+            f.write("gene_id,gene_name,tpm_unstranded,unstranded,fpkm_unstranded\n")
+            f.write("ENSG00000141510.18,TP53,42.5,5000,12.3\n")
+        return path
+
+    def test_pipeline_creates_both_outputs(self):
+        with tempfile.TemporaryDirectory() as td:
+            scored_path = self._write_scored(td)
+            rna_path = self._write_rna(td)
+            table_path = os.path.join(td, "table.csv")
+            corr_path = os.path.join(td, "corr.csv")
+
+            validate_mod.validate(
+                scored_path=scored_path,
+                rna_path=rna_path,
+                table_path=table_path,
+                correlations_path=corr_path,
+            )
+
+            assert os.path.isfile(table_path)
+            assert os.path.isfile(corr_path)
+
+            table_df = pd.read_csv(table_path)
+            assert len(table_df) == 1
+            assert "GENE" in table_df.columns
+
+            corr_df = pd.read_csv(corr_path)
+            assert len(corr_df) >= 1
+            assert "pearson_r" in corr_df.columns
+
+    def test_missing_scored_raises(self):
+        with pytest.raises(PipelineInputError, match="Scored variants file"):
+            validate_mod.validate(scored_path="/nonexistent/scored.tsv")

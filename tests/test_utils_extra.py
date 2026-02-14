@@ -177,3 +177,65 @@ class TestLoadTpmLookup:
             csv = self._make_csv(td, [])
             lookup = utils.load_tpm_lookup(csv)
         assert lookup == {}
+
+
+# ===================================================================
+# validate_gene_id
+# ===================================================================
+
+class TestValidateGeneId:
+    """Test the Ensembl gene ID regex validator."""
+
+    def test_valid_stripped(self):
+        assert utils.validate_gene_id("ENSG00000141510") is True
+
+    def test_valid_versioned(self):
+        assert utils.validate_gene_id("ENSG00000141510.18") is True
+
+    def test_valid_version_single_digit(self):
+        assert utils.validate_gene_id("ENSG00000000003.1") is True
+
+    def test_invalid_short(self):
+        assert utils.validate_gene_id("ENSG001") is False
+
+    def test_invalid_prefix(self):
+        assert utils.validate_gene_id("ENST00000141510") is False
+
+    def test_invalid_empty(self):
+        assert utils.validate_gene_id("") is False
+
+    def test_invalid_random(self):
+        assert utils.validate_gene_id("N_unmapped") is False
+
+    def test_invalid_dot_only(self):
+        assert utils.validate_gene_id(".") is False
+
+    def test_invalid_letters_in_digits(self):
+        assert utils.validate_gene_id("ENSG0000014151X") is False
+
+
+# ===================================================================
+# validate_file
+# ===================================================================
+
+class TestValidateFile:
+    """Test the file-existence validator."""
+
+    def test_existing_file_passes(self):
+        with tempfile.NamedTemporaryFile(delete=False) as f:
+            path = f.name
+        try:
+            # Should not raise
+            utils.validate_file(path)
+        finally:
+            os.unlink(path)
+
+    def test_missing_file_raises(self):
+        from src.exceptions import PipelineInputError
+        with pytest.raises(PipelineInputError, match="not found"):
+            utils.validate_file("/nonexistent/path/abc.txt")
+
+    def test_custom_label_in_message(self):
+        from src.exceptions import PipelineInputError
+        with pytest.raises(PipelineInputError, match="My VCF"):
+            utils.validate_file("/no/such/file.vcf", label="My VCF")
