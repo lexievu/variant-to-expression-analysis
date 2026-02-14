@@ -46,7 +46,7 @@ All sequence retrieval and mutation application happens server-side. The client 
 If a future requirement does arise (e.g., adding Enformer as a second model), the recommended approach is:
 
 1. **Local FASTA** — download `hg38.fa` from UCSC or NCBI and use `pysam.FastaFile` for O(1) lookups. This is faster, offline-capable, and more reliable than HTTP API calls.
-2. **REF-allele QC only** — a lightweight check can be added to `2_vcf_filter.py` without touching the prediction pipeline:
+2. **REF-allele QC only** — a lightweight check can be added to `s2_vcf_filter.py` without touching the prediction pipeline:
    ```python
    import pysam
    fasta = pysam.FastaFile("hg38.fa")

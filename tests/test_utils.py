@@ -178,14 +178,14 @@ class TestParseCsq:
 
 
 # ===================================================================
-# parse_csq_field (from 2_vcf_filter.py) — integration-style tests
+# parse_csq_field (from s2_vcf_filter.py) — integration-style tests
 # ===================================================================
 
-# 2_vcf_filter no longer has top-level side effects (logging is deferred
+# s2_vcf_filter no longer has top-level side effects (logging is deferred
 # to setup_logging()), so we can import directly.
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 from importlib import import_module
-vcf_filter = import_module('2_vcf_filter')
+vcf_filter = import_module('s2_vcf_filter')
 
 
 class TestParseCsqField:
@@ -243,7 +243,7 @@ class TestParseCsqField:
 
 
 # ===================================================================
-# parse_args (CLI from 2_vcf_filter.py)
+# parse_args (CLI from s2_vcf_filter.py)
 # ===================================================================
 
 class TestParseArgs:
@@ -375,7 +375,7 @@ class TestSetupLogging:
 
 
 # ===================================================================
-# load_rna_gene_ids (from 2_vcf_filter.py)
+# load_rna_gene_ids (from s2_vcf_filter.py)
 # ===================================================================
 
 class TestLoadRnaGeneIds:

@@ -17,9 +17,9 @@ This script does **not** call the AlphaGenome API.
 
 Usage
 -----
-    python 6_gtex_baseline.py                            # defaults
-    python 6_gtex_baseline.py --table output/my_table.csv
-    python 6_gtex_baseline.py --tissue Lung              # default
+    python s6_gtex_baseline.py                            # defaults
+    python s6_gtex_baseline.py --table output/my_table.csv
+    python s6_gtex_baseline.py --tissue Lung              # default
 """
 
 import argparse

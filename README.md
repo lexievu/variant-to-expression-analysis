@@ -26,14 +26,14 @@ TCGA LUAD VCF (paired tumor/normal)
         │
         ▼
 ┌─────────────────────────────────────────────────┐
-│  2_vcf_filter.py                                │
+│  s2_vcf_filter.py                                │
 │  PASS + VEP impact (configurable) + RNA match   │
 │  → output/high_impact_variants.vcf              │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  3_gene_expression_prediction.py                │
+│  s3_gene_expression_prediction.py                │
 │  AlphaGenome API → raw ref/alt expression sums  │
 │  Retry, rate-limit, checkpoint/resume           │
 │  → output/raw_predictions.tsv                   │
@@ -41,7 +41,7 @@ TCGA LUAD VCF (paired tumor/normal)
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  4_score_variants.py                            │
+│  s4_score_variants.py                            │
 │  log₂ FC, VAF, TPM, NMD, vaccine priority      │
 │  Re-runnable without API calls                  │
 │  → output/scored_variants.tsv                   │
@@ -65,9 +65,9 @@ TCGA LUAD VCF (paired tumor/normal)
 │   ├── scored_variants.tsv              # Scored variants (FC, VAF, TPM, NMD, priority)
 │   └── ...                              # Intermediate outputs
 ├── src/
-│   ├── 2_vcf_filter.py                  # Variant filtering (CLI: --impact, --output)
-│   ├── 3_gene_expression_prediction.py  # AlphaGenome raw predictions (API, retry, resume)
-│   ├── 4_score_variants.py              # Biological scoring (VAF, TPM, NMD, priority)
+│   ├── s2_vcf_filter.py                  # Variant filtering (CLI: --impact, --output)
+│   ├── s3_gene_expression_prediction.py  # AlphaGenome raw predictions (API, retry, resume)
+│   ├── s4_score_variants.py              # Biological scoring (VAF, TPM, NMD, priority)
 │   ├── constants.py                     # Shared configuration (UPPERCASE constants)
 │   └── utils.py                         # CSQ parsing, gene ID extraction, logging setup
 ├── tests/
@@ -117,16 +117,16 @@ Activate the environment and run scripts sequentially:
 conda activate biotech_challenge
 
 # Step 1: Filter variants (defaults to HIGH impact; use --impact to change)
-python src/2_vcf_filter.py                              # → output/high_impact_variants.vcf
-python src/2_vcf_filter.py --impact HIGH,MODERATE        # Include missense variants
-python src/2_vcf_filter.py --impact HIGH -o custom.vcf   # Custom output path
+python src/s2_vcf_filter.py                              # → output/high_impact_variants.vcf
+python src/s2_vcf_filter.py --impact HIGH,MODERATE        # Include missense variants
+python src/s2_vcf_filter.py --impact HIGH -o custom.vcf   # Custom output path
 
 # Step 2: Predict expression via AlphaGenome (expensive — uses API)
-python src/3_gene_expression_prediction.py               # → output/raw_predictions.tsv
-python src/3_gene_expression_prediction.py --resume      # Resume interrupted run
+python src/s3_gene_expression_prediction.py               # → output/raw_predictions.tsv
+python src/s3_gene_expression_prediction.py --resume      # Resume interrupted run
 
 # Step 3: Score variants with biological context (cheap — no API)
-python src/4_score_variants.py                           # → output/scored_variants.tsv
+python src/s4_score_variants.py                           # → output/scored_variants.tsv
 ```
 
 ### Running Tests

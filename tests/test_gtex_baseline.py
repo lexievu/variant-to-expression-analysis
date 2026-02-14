@@ -1,4 +1,4 @@
-"""Tests for src/6_gtex_baseline.py — classification logic."""
+"""Tests for src/s6_gtex_baseline.py — classification logic."""
 
 import os
 import sys
@@ -8,7 +8,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from importlib import import_module
-gtex_mod = import_module('6_gtex_baseline')
+gtex_mod = import_module('s6_gtex_baseline')
 
 
 # ===================================================================

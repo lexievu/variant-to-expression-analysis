@@ -87,11 +87,11 @@ The ERBB2 (HER2) variant is particularly interesting. It has the highest express
 conda activate biotech_challenge
 
 # Step 1: Filter (already done — output exists)
-python src/2_vcf_filter.py                          # → output/high_impact_variants.vcf
+python src/s2_vcf_filter.py                          # → output/high_impact_variants.vcf
 
 # Step 2: Predict (requires ALPHAGENOME_API_KEY in .env)
-python src/3_gene_expression_prediction.py          # → output/raw_predictions.tsv
+python src/s3_gene_expression_prediction.py          # → output/raw_predictions.tsv
 
 # Step 3: Score (no API needed)
-python src/4_score_variants.py                      # → output/scored_variants.tsv
+python src/s4_score_variants.py                      # → output/scored_variants.tsv
 ```

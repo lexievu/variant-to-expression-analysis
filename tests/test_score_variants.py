@@ -1,4 +1,4 @@
-"""Tests for src/4_score_variants.py — scoring and vaccine-priority logic."""
+"""Tests for src/s4_score_variants.py — scoring and vaccine-priority logic."""
 
 import sys
 import os
@@ -10,7 +10,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from importlib import import_module
-score_mod = import_module('4_score_variants')
+score_mod = import_module('s4_score_variants')
 
 
 # ===================================================================
@@ -174,7 +174,7 @@ class TestVaccinePriority:
 
 
 # ===================================================================
-# parse_args (CLI from 4_score_variants.py)
+# parse_args (CLI from s4_score_variants.py)
 # ===================================================================
 
 class TestScoreParseArgs:

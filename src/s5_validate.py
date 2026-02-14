@@ -1,6 +1,6 @@
 """Validate AlphaGenome predictions against patient RNA-seq data.
 
-Reads the scored predictions TSV (output of ``4_score_variants.py``) and the
+Reads the scored predictions TSV (output of ``s4_score_variants.py``) and the
 patient RNA-seq CSV, joins on Ensembl gene ID, and produces two CSV files:
 
 1. **validation_table.csv** — per-variant data enriched with raw counts and
@@ -12,8 +12,8 @@ This script does **not** call the AlphaGenome API.
 
 Usage
 -----
-    python 5_validate.py                                     # defaults
-    python 5_validate.py --scored my_scored.tsv --rna my_rna.csv
+    python s5_validate.py                                     # defaults
+    python s5_validate.py --scored my_scored.tsv --rna my_rna.csv
 """
 
 import argparse

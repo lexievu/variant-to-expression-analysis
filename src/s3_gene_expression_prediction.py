@@ -1,11 +1,11 @@
 """AlphaGenome expression prediction — raw API output.
 
-Reads a filtered VCF (by default the output of ``2_vcf_filter.py``), queries
+Reads a filtered VCF (by default the output of ``s2_vcf_filter.py``), queries
 the AlphaGenome API for each variant, and writes a **raw predictions TSV**
 containing only the expensive API outputs.
 
 Downstream scoring (VAF, TPM, NMD, vaccine priority) is handled by
-``4_score_variants.py``, which can be re-run cheaply without touching the API.
+``s4_score_variants.py``, which can be re-run cheaply without touching the API.
 
 Robustness features
 -------------------
@@ -19,9 +19,9 @@ Robustness features
 
 Usage
 -----
-    python 3_gene_expression_prediction.py                     # defaults
-    python 3_gene_expression_prediction.py --vcf my.vcf -o out.tsv
-    python 3_gene_expression_prediction.py --resume            # pick up where you left off
+    python s3_gene_expression_prediction.py                     # defaults
+    python s3_gene_expression_prediction.py --vcf my.vcf -o out.tsv
+    python s3_gene_expression_prediction.py --resume            # pick up where you left off
 """
 
 import argparse

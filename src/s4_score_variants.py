@@ -1,6 +1,6 @@
 """Score raw AlphaGenome predictions with biological context.
 
-Reads the raw predictions TSV produced by ``3_gene_expression_prediction.py``
+Reads the raw predictions TSV produced by ``s3_gene_expression_prediction.py``
 and enriches each variant with:
 
 * **LOG2_FC** — log₂(ALT_EXPR / REF_EXPR)
@@ -16,9 +16,9 @@ re-run it freely while tuning thresholds or adding new metrics.
 
 Usage
 -----
-    python 4_score_variants.py                              # defaults
-    python 4_score_variants.py --predictions raw.tsv --vcf input.vcf
-    python 4_score_variants.py -o my_scored.tsv
+    python s4_score_variants.py                              # defaults
+    python s4_score_variants.py --predictions raw.tsv --vcf input.vcf
+    python s4_score_variants.py -o my_scored.tsv
 """
 
 import argparse

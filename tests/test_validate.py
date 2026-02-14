@@ -1,4 +1,4 @@
-"""Tests for src/5_validate.py — correlation and data-loading logic."""
+"""Tests for src/s5_validate.py — correlation and data-loading logic."""
 
 import os
 import sys
@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 
 from importlib import import_module
-validate_mod = import_module('5_validate')
+validate_mod = import_module('s5_validate')
 
 
 # ===================================================================

@@ -101,7 +101,7 @@ To distinguish tumour-specific expression changes from normal lung biology, we c
 4. **No tumour-specific silencing** was detected — no gene crossed from expressed in GTEx to silenced in the tumour. This limits the set of candidate loss-of-expression hits.
 
 Full data: [`output/gtex_comparison.csv`](../output/gtex_comparison.csv)
-Script: [`src/6_gtex_baseline.py`](../src/6_gtex_baseline.py)
+Script: [`src/s6_gtex_baseline.py`](../src/s6_gtex_baseline.py)
 
 ---
 
