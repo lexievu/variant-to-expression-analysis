@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from cyvcf2 import VCF
 from alphagenome.models import dna_client
@@ -11,11 +13,14 @@ import utils
 load_dotenv()
 
 # --- 1. CONFIGURATION ---
+LOG_FILENAME = "log/gene_expression_prediction.log"
 API_KEY = os.getenv("ALPHAGENOME_API_KEY")
 VCF_FILE = QUICK_10
 OUTPUT_FILENAME = "output/alphagenome_hits.tsv"
 TISSUE_ID = 'UBERON:0002048'  # Lung
 DNA_SEQUENCE_LENGTH = 1_048_576
+
+utils.setup_logging(LOG_FILENAME)
 
 # --- 2. SETUP OUPUT FILE ---
 # We open the file in 'w' (write) mode
@@ -27,7 +32,7 @@ header = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTAT
 outfile.write(header)
 
 # --- 3. INITIALIZE ALPHAGENOME ---
-print(f"Connecting to AlphaGenome and writing to '{OUTPUT_FILENAME}'...")
+logging.info(f"Connecting to AlphaGenome and writing to '{OUTPUT_FILENAME}'...")
 model = dna_client.create(API_KEY)
 vcf = VCF(VCF_FILE)
 
@@ -96,12 +101,12 @@ for variant in vcf:
         count_saved += 1
         
         # Optional: Print a progress indicator to terminal
-        print(f"Saved hit: {gene_name} ({status})")
+        logging.info(f"Saved hit: {gene_name} ({status})")
 
     except Exception as e:
-        print(f"Error at {chrom}:{pos} -> {e}")
+        logging.error(f"Error at {chrom}:{pos} -> {e}")
 
 # --- 8. CLEANUP ---
 outfile.close()
 vcf.close()
-print(f"Done! Saved {count_saved} interesting variants to {OUTPUT_FILENAME}")
+logging.info(f"Done! Saved {count_saved} interesting variants to {OUTPUT_FILENAME}")
