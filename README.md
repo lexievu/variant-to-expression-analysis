@@ -155,6 +155,7 @@ Tests also run automatically on every push/PR to `main` via GitHub Actions.
 | Loss threshold | log₂ FC < −1.0 |
 
 For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priority), see [docs/METRICS.md](docs/METRICS.md).
+For initial prediction results and interpretation (**model predictions only — not yet validated**), see [docs/RESULTS.md](docs/RESULTS.md).
 For why UCSC Genome Browser context retrieval is not needed, see [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md).
 
 ---

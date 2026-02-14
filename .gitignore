@@ -4,6 +4,7 @@ data/
 *.vcf.gz
 *.fasta
 *.fa
+output/
 
 # Ignore Jupyter checkpoints
 .ipynb_checkpoints/
