@@ -212,9 +212,9 @@ class TestScoreVariantsPipeline:
         """Create a minimal raw predictions TSV."""
         path = os.path.join(tmp_dir, "raw.tsv")
         with open(path, "w") as f:
-            f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\n")
-            f.write("chr1\t100\tA\tT\tTP53\tENSG00000141510\t100.0\t50.0\n")
-            f.write("chr7\t200\tG\tC\tEGFR\tENSG00000146648\t100.0\t200.0\n")
+            f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n")
+            f.write("chr1\t100\tA\tT\tTP53\tENSG00000141510\t-1.000000\n")
+            f.write("chr7\t200\tG\tC\tEGFR\tENSG00000146648\t1.000000\n")
         return path
 
     def _write_rna(self, tmp_dir):
@@ -242,10 +242,10 @@ class TestScoreVariantsPipeline:
             assert os.path.isfile(out_path)
             df = pd.read_csv(out_path, sep="\t", na_values=".")
             assert len(df) == 2
-            # TP53: 50/100 → log2fc ≈ −1.0 → Neutral at boundary
+            # TP53: LOG2_FC = -1.0 (from raw predictions) → Neutral at boundary
             assert df.iloc[0]["GENE"] == "TP53"
             assert df.iloc[0]["LOG2_FC"] == pytest.approx(-1.0, abs=0.01)
-            # EGFR: 200/100 → log2fc ≈ +1.0 → Neutral at boundary
+            # EGFR: LOG2_FC = 1.0 (from raw predictions) → Neutral at boundary
             assert df.iloc[1]["GENE"] == "EGFR"
             assert df.iloc[1]["LOG2_FC"] == pytest.approx(1.0, abs=0.01)
 
@@ -275,7 +275,7 @@ class TestScoreVariantsPipeline:
         with tempfile.TemporaryDirectory() as td:
             raw_path = os.path.join(td, "raw.tsv")
             with open(raw_path, "w") as f:
-                f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\n")
+                f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n")
             rna_path = self._write_rna(td)
             out_path = os.path.join(td, "scored.tsv")
 

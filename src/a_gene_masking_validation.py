@@ -451,21 +451,21 @@ def _column_order() -> list[str]:
 
 
 def _print_summary(df: pd.DataFrame) -> None:
-    """Print a human-readable comparison summary."""
-    print("\n" + "=" * 72)
-    print("GENE MASKING VALIDATION SUMMARY")
-    print("=" * 72)
+    """Log a human-readable comparison summary."""
+    logging.info("=" * 72)
+    logging.info("GENE MASKING VALIDATION SUMMARY")
+    logging.info("=" * 72)
 
     n_variants = df[["chrom", "pos"]].drop_duplicates().shape[0]
-    print(f"Variants processed:  {n_variants}")
+    logging.info("Variants processed:  %d", n_variants)
 
     if "ag_gene_name" in df.columns:
         ag_genes = df[df["ag_gene_name"].astype(str).ne("")]["ag_gene_name"].nunique()
-        print(f"AlphaGenome genes:   {ag_genes}")
+        logging.info("AlphaGenome genes:   %d", ag_genes)
 
     if "ucsc_gene_name" in df.columns:
         ucsc_genes = df[df["ucsc_gene_name"].astype(str).ne("")]["ucsc_gene_name"].nunique()
-        print(f"UCSC GENCODE genes:  {ucsc_genes}")
+        logging.info("UCSC GENCODE genes:  %d", ucsc_genes)
 
     # Check gene-name agreement
     if "ag_gene_name" in df.columns and "ucsc_gene_name" in df.columns:
@@ -475,7 +475,7 @@ def _print_summary(df: pd.DataFrame) -> None:
         ]
         if not matched.empty:
             agree = (matched["ag_gene_name"] == matched["ucsc_gene_name"]).sum()
-            print(f"Name matches:        {agree}/{len(matched)}")
+            logging.info("Name matches:        %d/%d", agree, len(matched))
 
     # Check strand agreement
     if "ag_gene_strand" in df.columns and "ucsc_strand" in df.columns:
@@ -485,17 +485,19 @@ def _print_summary(df: pd.DataFrame) -> None:
         ]
         if not both.empty:
             strand_agree = (both["ag_gene_strand"] == both["ucsc_strand"]).sum()
-            print(f"Strand matches:      {strand_agree}/{len(both)}")
+            logging.info("Strand matches:      %d/%d", strand_agree, len(both))
 
     # Neighbor gene dilution — how many genes per window?
     if "ucsc_genes_in_window" in df.columns:
         per_variant = df.groupby(["chrom", "pos"])["ucsc_genes_in_window"].first()
-        print(f"\nGenes per 1 MB window (UCSC):")
-        print(f"  min={per_variant.min()}  median={per_variant.median():.0f}"
-              f"  max={per_variant.max()}")
-        print("  → This is why whole-window summing dilutes the target gene signal.")
+        logging.info("Genes per 1 MB window (UCSC):")
+        logging.info(
+            "  min=%d  median=%.0f  max=%d",
+            per_variant.min(), per_variant.median(), per_variant.max(),
+        )
+        logging.info("  → This is why whole-window summing dilutes the target gene signal.")
 
-    print("=" * 72 + "\n")
+    logging.info("=" * 72)
 
 
 # ---------------------------------------------------------------------------

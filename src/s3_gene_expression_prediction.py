@@ -1,8 +1,12 @@
-"""AlphaGenome expression prediction — raw API output.
+"""AlphaGenome expression prediction — per-gene log₂ fold-change via GeneMaskLFCScorer.
 
 Reads a filtered VCF (by default the output of ``s2_vcf_filter.py``), queries
-the AlphaGenome API for each variant, and writes a **raw predictions TSV**
-containing only the expensive API outputs.
+the AlphaGenome API using ``score_variant`` with ``GeneMaskLFCScorer`` to
+compute **per-gene log₂ fold-change** (masking to exon bins only), and writes
+a raw predictions TSV filtered to the target gene from the VCF CSQ annotation.
+
+This replaces the previous whole-window summing strategy which diluted the
+target gene's signal across 21–99 neighbouring genes (see docs/GENE_DILUTION.md).
 
 Downstream scoring (VAF, TPM, NMD, vaccine priority) is handled by
 ``s4_score_variants.py``, which can be re-run cheaply without touching the API.
@@ -32,8 +36,9 @@ import time
 import traceback
 
 import numpy as np
+import pandas as pd
 from cyvcf2 import VCF
-from alphagenome.models import dna_client
+from alphagenome.models import dna_client, variant_scorers
 from alphagenome.data import genome
 from dotenv import load_dotenv
 
@@ -55,7 +60,7 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0          # seconds; doubles each retry
 RATE_LIMIT_DELAY = 0.5          # seconds between successive API calls
 
-RAW_HEADER = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR\n"
+RAW_HEADER = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n"
 
 
 # ---------------------------------------------------------------------------
@@ -115,23 +120,26 @@ def _load_checkpoint(output_file):
     return done
 
 
-def _predict_with_retry(model, interval, ag_variant, tissue_id,
-                        max_retries=MAX_RETRIES,
-                        base_delay=RETRY_BASE_DELAY):
-    """Call *model.predict_variant* with exponential-backoff retry.
+def _score_with_retry(model, interval, ag_variant,
+                      max_retries=MAX_RETRIES,
+                      base_delay=RETRY_BASE_DELAY):
+    """Call *model.score_variant* with ``GeneMaskLFCScorer`` and retry.
 
-    Returns the prediction outputs on success, or raises the last
-    exception after all retries are exhausted.
+    Returns a tidy ``pd.DataFrame`` (via ``tidy_scores``) on success,
+    or raises the last exception after all retries are exhausted.
     """
+    scorer = variant_scorers.GeneMaskLFCScorer(
+        requested_output=dna_client.OutputType.RNA_SEQ,
+    )
     last_exc = None
     for attempt in range(1, max_retries + 1):
         try:
-            return model.predict_variant(
+            scores = model.score_variant(
                 interval=interval,
                 variant=ag_variant,
-                ontology_terms=[tissue_id],
-                requested_outputs=[dna_client.OutputType.RNA_SEQ],
+                variant_scorers=[scorer],
             )
+            return variant_scorers.tidy_scores(scores)
         except Exception as exc:
             last_exc = exc
             if attempt < max_retries:
@@ -229,27 +237,46 @@ def run_predictions(
             interval = genome.Interval(chrom, start, end)
 
             try:
-                # --- Predict (with retry) ----------------------------------
-                outputs = _predict_with_retry(
-                    model, interval, ag_variant, tissue_id,
+                # --- Score with GeneMaskLFCScorer (with retry) -------------
+                scores_df = _score_with_retry(
+                    model, interval, ag_variant,
                 )
 
-                # --- Write raw API output only -----------------------------
-                ref_sum = float(np.sum(outputs.reference.rna_seq.values))
-                alt_sum = float(np.sum(outputs.alternate.rna_seq.values))
+                # --- Extract target gene LFC -------------------------------
+                log2_fc = float("nan")
+                if scores_df is not None and not scores_df.empty:
+                    target = scores_df[
+                        scores_df["gene_name"] == gene_name
+                    ]
+                    if target.empty and gene_id:
+                        # Fallback: match on ENSEMBL ID prefix
+                        target = scores_df[
+                            scores_df["gene_id"].str.startswith(
+                                gene_id.split(".")[0]
+                            )
+                        ]
+                    if not target.empty:
+                        log2_fc = float(target.iloc[0]["raw_score"])
+                    else:
+                        logging.warning(
+                            "Gene %s (%s) not found in %d GeneMask results "
+                            "at %s:%d",
+                            gene_name, gene_id,
+                            len(scores_df), chrom, pos,
+                        )
 
                 line = (
                     f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}"
-                    f"\t{ref_sum:.6f}\t{alt_sum:.6f}\n"
+                    f"\t{log2_fc:.6f}\n"
                 )
                 outfile.write(line)
                 outfile.flush()
                 count_saved += 1
 
                 logging.info(
-                    "[%d/%d] %s:%d %s — ref=%.6f alt=%.6f",
+                    "[%d/%d] %s:%d %s — log2_fc=%.6f",
                     count_saved, count_total, chrom, pos, gene_name,
-                    ref_sum, alt_sum,
+                    log2_fc,
                 )
 
             except Exception:

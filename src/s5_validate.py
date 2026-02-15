@@ -136,31 +136,23 @@ def compute_all_correlations(df):
     """Return a list of correlation dicts for all comparisons of interest."""
     rows = []
 
-    # Predicted expression level vs observed TPM
-    for pred_col in ("ALT_EXPR", "REF_EXPR"):
-        rows.append(_corr_row(df, pred_col, "OBSERVED_TPM",
-                              f"{pred_col} vs OBSERVED_TPM"))
-        rows.append(_corr_row(df, pred_col, "OBSERVED_TPM",
-                              f"{pred_col} vs OBSERVED_TPM (log₁₀)",
-                              transform="log10"))
-
     # Predicted fold-change vs observed TPM
     rows.append(_corr_row(df, "LOG2_FC", "OBSERVED_TPM",
                           "LOG2_FC vs OBSERVED_TPM"))
+    rows.append(_corr_row(df, "LOG2_FC", "OBSERVED_TPM",
+                          "LOG2_FC vs OBSERVED_TPM (log₁₀)",
+                          transform="log10"))
 
-    # Predicted expression vs raw counts (if available)
+    # Predicted fold-change vs raw counts (if available)
     if "unstranded" in df.columns:
-        rows.append(_corr_row(df, "ALT_EXPR", "unstranded",
-                              "ALT_EXPR vs raw_counts"))
-        rows.append(_corr_row(df, "ALT_EXPR", "unstranded",
-                              "ALT_EXPR vs raw_counts (log₁₀)",
-                              transform="log10"))
+        rows.append(_corr_row(df, "LOG2_FC", "unstranded",
+                              "LOG2_FC vs raw_counts"))
 
     # Stratified: expressed genes only (TPM ≥ 1)
     expressed = df[df["OBSERVED_TPM"] >= TPM_EXPRESSED_THRESHOLD]
     if len(expressed) >= 3:
-        rows.append(_corr_row(expressed, "ALT_EXPR", "OBSERVED_TPM",
-                              "ALT_EXPR vs TPM (expressed only, TPM≥1)"))
+        rows.append(_corr_row(expressed, "LOG2_FC", "OBSERVED_TPM",
+                              "LOG2_FC vs TPM (expressed only, TPM≥1)"))
 
     return rows
 
@@ -201,7 +193,7 @@ def validate(
     # --- Validation table CSV ----------------------------------------------
     out_cols = [
         "CHROM", "POS", "REF", "ALT", "GENE", "GENE_ID",
-        "REF_EXPR", "ALT_EXPR", "LOG2_FC", "STATUS",
+        "LOG2_FC", "STATUS",
         "VAF", "OBSERVED_TPM", "EXPRESSED", "NMD_FLAG", "VACCINE_PRIORITY",
         "unstranded", "fpkm_unstranded",
     ]

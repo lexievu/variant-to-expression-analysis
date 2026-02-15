@@ -1,15 +1,18 @@
 """Score raw AlphaGenome predictions with biological context.
 
 Reads the raw predictions TSV produced by ``s3_gene_expression_prediction.py``
-and enriches each variant with:
+(which now uses ``GeneMaskLFCScorer`` for per-gene log₂ fold-change) and
+enriches each variant with:
 
-* **LOG2_FC** — log₂(ALT_EXPR / REF_EXPR)
 * **STATUS** — Gain_of_Expression / Loss_of_Expression / Neutral
 * **VAF** — variant allele frequency from the VCF tumour sample
 * **OBSERVED_TPM** — RNA-seq expression (TPM) for the gene
 * **EXPRESSED** — whether the gene is expressed above a threshold
 * **NMD_FLAG** — whether the variant triggers nonsense-mediated decay
 * **VACCINE_PRIORITY** — composite HIGH / MEDIUM / LOW suitability score
+
+The **LOG2_FC** column is passed through from the raw predictions (computed
+by AlphaGenome's ``GeneMaskLFCScorer``, which masks to gene exon bins).
 
 This script is *cheap* — it never touches the AlphaGenome API, so you can
 re-run it freely while tuning thresholds or adding new metrics.
@@ -55,7 +58,7 @@ VAF_CLONAL_THRESHOLD = 0.2     # VAF >= 0.2 → likely clonal variant
 
 SCORED_HEADER = (
     "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
-    "\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS"
+    "\tLOG2_FC\tSTATUS"
     "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
 )
 
@@ -200,10 +203,8 @@ def score_variants(
         alt = str(r["ALT"])
         gene = str(r["GENE"])
         gene_id = str(r["GENE_ID"])
-        ref_expr = float(r["REF_EXPR"])
-        alt_expr = float(r["ALT_EXPR"])
+        log2_fc = float(r["LOG2_FC"])
 
-        log2_fc = compute_log2_fc(ref_expr, alt_expr)
         status = classify(log2_fc)
 
         # VCF-derived metrics
@@ -222,7 +223,7 @@ def score_variants(
 
         rows.append(
             f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene}\t{gene_id}"
-            f"\t{ref_expr:.6f}\t{alt_expr:.6f}\t{log2_fc:.4f}\t{status}"
+            f"\t{log2_fc:.6f}\t{status}"
             f"\t{vaf_str}\t{tpm_str}\t{expressed}\t{nmd_flag}\t{priority}"
         )
 

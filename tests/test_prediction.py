@@ -56,9 +56,9 @@ class TestLoadCheckpoint:
 
     def test_reads_existing_variants(self):
         content = textwrap.dedent("""\
-            CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tREF_EXPR\tALT_EXPR
-            chr1\t12345\tA\tT\tTP53\tENSG00000141510\t100.0\t50.0
-            chr7\t55249063\tG\tC\tEGFR\tENSG00000146648\t200.0\t300.0
+            CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC
+            chr1\t12345\tA\tT\tTP53\tENSG00000141510\t-1.000000
+            chr7\t55249063\tG\tC\tEGFR\tENSG00000146648\t0.500000
         """)
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".tsv", delete=False
@@ -99,49 +99,57 @@ class TestLoadCheckpoint:
 
 
 # ===================================================================
-# _predict_with_retry
+# _score_with_retry
 # ===================================================================
 
-class TestPredictWithRetry:
+class TestScoreWithRetry:
     """Test the exponential-backoff retry wrapper."""
 
     def test_success_on_first_attempt(self):
         model = MagicMock()
         expected = MagicMock()
-        model.predict_variant.return_value = expected
+        model.score_variant.return_value = expected
 
-        result = pred_mod._predict_with_retry(
-            model, "interval", "variant", "tissue",
-            max_retries=3, base_delay=0.0,
-        )
+        with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
+            mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            mock_vs.tidy_scores.return_value = expected
+            result = pred_mod._score_with_retry(
+                model, "interval", "variant",
+                max_retries=3, base_delay=0.0,
+            )
         assert result is expected
-        assert model.predict_variant.call_count == 1
+        assert model.score_variant.call_count == 1
 
     def test_success_after_retry(self):
         model = MagicMock()
         expected = MagicMock()
-        model.predict_variant.side_effect = [
+        model.score_variant.side_effect = [
             RuntimeError("transient"),
             expected,
         ]
 
-        result = pred_mod._predict_with_retry(
-            model, "interval", "variant", "tissue",
-            max_retries=3, base_delay=0.0,
-        )
+        with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
+            mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            mock_vs.tidy_scores.return_value = expected
+            result = pred_mod._score_with_retry(
+                model, "interval", "variant",
+                max_retries=3, base_delay=0.0,
+            )
         assert result is expected
-        assert model.predict_variant.call_count == 2
+        assert model.score_variant.call_count == 2
 
     def test_raises_after_all_retries_exhausted(self):
         model = MagicMock()
-        model.predict_variant.side_effect = RuntimeError("permanent")
+        model.score_variant.side_effect = RuntimeError("permanent")
 
-        with pytest.raises(RuntimeError, match="permanent"):
-            pred_mod._predict_with_retry(
-                model, "interval", "variant", "tissue",
-                max_retries=2, base_delay=0.0,
-            )
-        assert model.predict_variant.call_count == 2
+        with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
+            mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            with pytest.raises(RuntimeError, match="permanent"):
+                pred_mod._score_with_retry(
+                    model, "interval", "variant",
+                    max_retries=2, base_delay=0.0,
+                )
+        assert model.score_variant.call_count == 2
 
 
 # ===================================================================

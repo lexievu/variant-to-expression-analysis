@@ -160,17 +160,15 @@ class TestComputeAllCorrelations:
         """Create a DataFrame with the columns expected by compute_all_correlations."""
         rng = np.random.default_rng(42)
         return pd.DataFrame({
-            "ALT_EXPR": rng.uniform(10, 1000, n),
-            "REF_EXPR": rng.uniform(10, 1000, n),
             "LOG2_FC": rng.uniform(-2, 2, n),
             "OBSERVED_TPM": rng.uniform(0, 50, n),
         })
 
-    def test_returns_at_least_five_comparisons(self):
+    def test_returns_at_least_two_comparisons(self):
         df = self._make_df()
         rows = validate_mod.compute_all_correlations(df)
-        # 2 pred_cols × 2 transforms + LOG2_FC = 5 minimum
-        assert len(rows) >= 5
+        # LOG2_FC vs TPM + LOG2_FC vs TPM (log₁₀) = 2 minimum
+        assert len(rows) >= 2
 
     def test_includes_log10_transforms(self):
         df = self._make_df()
@@ -213,12 +211,12 @@ class TestValidatePipeline:
         with open(path, "w") as f:
             f.write(
                 "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
-                "\tREF_EXPR\tALT_EXPR\tLOG2_FC\tSTATUS"
+                "\tLOG2_FC\tSTATUS"
                 "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
             )
             f.write(
                 "chr1\t100\tA\tT\tTP53\tENSG00000141510"
-                "\t100.0\t50.0\t-1.0\tNeutral"
+                "\t-1.0\tNeutral"
                 "\t0.3\t42.5\tTrue\tFalse\tHIGH\n"
             )
         return path
