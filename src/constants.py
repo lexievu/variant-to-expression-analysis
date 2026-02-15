@@ -11,6 +11,7 @@ RAW_PREDICTIONS = str(PROJECT_ROOT / "output" / "raw_predictions.tsv")
 SCORED_VARIANTS = str(PROJECT_ROOT / "output" / "scored_variants.tsv")
 VALIDATION_TABLE = str(PROJECT_ROOT / "output" / "validation_table.csv")
 VALIDATION_CORRELATIONS = str(PROJECT_ROOT / "output" / "validation_correlations.csv")
+SOMATIC_VARIANTS = str(PROJECT_ROOT / "output" / "somatic_variants.txt")
 GTEX_COMPARISON = str(PROJECT_ROOT / "output" / "gtex_comparison.csv")
 DOTENV_PATH = str(PROJECT_ROOT / ".env")
 LOG_DIR = PROJECT_ROOT / "log"
