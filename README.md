@@ -1,72 +1,114 @@
 # Variant-to-Expression Analysis
 
-Evaluating [AlphaGenome](https://deepmind.google/technologies/alphagenome/)'s ability to predict gene expression changes from cancer-associated somatic DNA variants, using TCGA lung adenocarcinoma (LUAD) whole-genome sequencing data.
+Evaluating [AlphaGenome](https://deepmind.google/technologies/alphagenome/)'s ability to predict gene expression changes from cancer-associated DNA mutations, using TCGA lung adenocarcinoma (LUAD) whole-genome sequencing data.
+
+---
+
+## Background — Key Concepts
+
+If you're coming from a biology background, here's a quick refresher on the specialist terms used throughout this project:
+
+| Term | What it means |
+|---|---|
+| **Somatic variant / mutation** | A DNA change that has occurred in a body (somatic) cell — not inherited. Cancer is driven by somatic mutations that accumulate in tumour cells. |
+| **VCF file** | Variant Call Format — a standard text file that lists every DNA position where a patient's genome differs from the reference human genome. Think of it as a spreadsheet of mutations. |
+| **Gene expression** | How actively a gene is being "read" (transcribed) by the cell. Measured as the amount of mRNA produced. Higher expression → more mRNA → typically more protein. |
+| **RNA-seq / TPM** | RNA sequencing measures the mRNA in a sample. TPM (Transcripts Per Million) is a normalised unit that lets us compare expression levels across genes and samples. |
+| **Log₂ fold-change (LOG2_FC)** | A way of expressing how much gene expression has changed. A LOG2_FC of +1 means expression has *doubled*; −1 means it has *halved*; 0 means no change. |
+| **AlphaGenome** | A deep-learning AI model (by Google DeepMind) that reads a stretch of DNA sequence and predicts how much each nearby gene will be expressed. We use it to ask: "if we introduce this cancer mutation into the DNA, how does the model think expression will change?" |
+| **GeneMaskLFCScorer** | A scoring method within AlphaGenome that masks (covers) a gene's exons to isolate the effect of a single mutation on that gene's predicted expression. |
+| **VEP impact** | The Variant Effect Predictor classifies each mutation's likely effect on protein function as LOW, MODERATE, HIGH, or MODIFIER. We focus on HIGH-impact variants (e.g. those that introduce a premature stop codon). |
+| **VAF** | Variant Allele Frequency — the fraction of DNA molecules in the tumour sample that carry the mutation (0–1). A VAF of 0.5 means roughly half the tumour cells have it. |
+| **NMD** | Nonsense-Mediated Decay — a cellular quality-control mechanism that destroys mRNAs containing premature stop codons, effectively silencing the gene. |
+| **GTEx** | Genotype-Tissue Expression project — a public database of gene expression measured in healthy human tissues. We use it as a "normal" baseline to see if a tumour gene is abnormally high or low. |
+| **TCGA** | The Cancer Genome Atlas — a large public dataset of cancer genomics data. Our input VCF comes from the LUAD (lung adenocarcinoma) cohort. |
 
 ---
 
 ## Purpose
 
-Somatic mutations in cancer can alter gene expression in ways that drive tumor progression. This pipeline asks: **can a deep learning DNA model (AlphaGenome) accurately predict the expression impact of real cancer variants?**
+Somatic mutations in cancer can change how much a gene is expressed (turned on or off), and those expression changes can drive tumour growth. This pipeline asks a simple but important question:
 
-Starting from a TCGA LUAD paired tumor/normal VCF, the pipeline:
+> **Can a deep-learning AI model (AlphaGenome) accurately predict the expression impact of real cancer mutations?**
 
-1. **Extracts** somatic variants from paired tumour/normal VCF (normal 0/0, tumour carries ALT).
-2. **Filters** for high-confidence somatic variants (PASS, tumour ALT allele, configurable VEP impact level, expressed in patient RNA-seq).
-3. Queries the **AlphaGenome API** using `GeneMaskLFCScorer` to predict per-gene exon-masked log₂ fold-change for each variant.
-4. **Scores** raw predictions with biological context — VAF, RNA-seq TPM, NMD, and a composite vaccine-priority label (LOG2_FC passed through from step 3).
-5. **Validates** predictions against real patient RNA-seq data via Pearson/Spearman correlations (GENCODE v36, version-stripped gene IDs).
-6. **Compares** tumour expression to GTEx normal-tissue baselines to classify silencing status.
+To answer this, we take a real lung cancer patient's mutation data and:
+
+1. **Extract** somatic (tumour-only) mutations by comparing the patient's tumour DNA against their matched normal (healthy) DNA.
+2. **Filter** down to a small set of high-confidence, high-impact mutations — those most likely to affect gene expression.
+3. **Predict** expression changes using AlphaGenome: for each mutation, the model estimates how much the nearby gene's expression would increase or decrease (reported as a log₂ fold-change).
+4. **Score** each variant with additional biological context — e.g. what fraction of tumour cells carry it (VAF), how much mRNA the gene actually produces (TPM), and whether the mutation triggers mRNA destruction (NMD).
+5. **Validate** the AI's predictions by comparing them to the patient's *actual* RNA-seq expression data, using statistical correlation.
+6. **Compare** the tumour's expression to healthy lung tissue (from the GTEx database) to see which genes are abnormally silenced or overexpressed.
 
 ---
 
 ## Pipeline Overview
 
+The diagram below shows how data flows through the six scripts. Each box is one step; the arrow shows what feeds into the next.
+
 ```
 TCGA LUAD VCF (paired tumor/normal)
+A file listing every mutation found in a lung
+cancer patient's tumour vs their healthy tissue.
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s1_initial_vcf_processing.py                   │
-│  Extract somatic variants (normal=0/0)          │
+│  Step 1 — s1_initial_vcf_processing.py          │
+│  Pull out somatic mutations: keep only those    │
+│  present in the tumour but absent from normal   │
+│  tissue (normal genotype = 0/0).                │
 │  → output/somatic_variants.txt                  │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s2_vcf_filter.py                               │
-│  PASS + ALT allele + VEP impact + RNA match     │
+│  Step 2 — s2_vcf_filter.py                      │
+│  Apply quality filters:                         │
+│   • Passed variant-caller QC (PASS flag)        │
+│   • Tumour carries the alternative allele       │
+│   • Predicted HIGH impact on protein (VEP)      │
+│   • Gene is actually expressed in RNA-seq       │
 │  → output/high_impact_variants.vcf              │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s3_gene_expression_prediction.py               │
-│  AlphaGenome API → GeneMaskLFCScorer per-gene   │
-│  exon-masked LOG2_FC. Retry, checkpoint/resume  │
+│  Step 3 — s3_gene_expression_prediction.py      │
+│  Send each mutation to the AlphaGenome AI and   │
+│  ask: "how would this mutation change the       │
+│  nearby gene's expression?"                     │
+│  Returns a LOG2_FC (log₂ fold-change) per gene. │
 │  → output/raw_predictions.tsv                   │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s4_score_variants.py                           │
-│  LOG2_FC (passthrough), VAF, TPM, NMD, priority │
-│  Re-runnable without API calls                  │
+│  Step 4 — s4_score_variants.py                  │
+│  Annotate each variant with extra biology:      │
+│   • VAF (how common is it in the tumour?)       │
+│   • TPM (how active is the gene in RNA-seq?)    │
+│   • NMD (does the mutation trigger mRNA decay?) │
+│   • Vaccine-priority flag                       │
+│  No API calls — can be re-run cheaply.          │
 │  → output/scored_variants.tsv                   │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s5_validate.py                                 │
-│  Pearson & Spearman correlation vs patient RNA  │
+│  Step 5 — s5_validate.py                        │
+│  Compare the AI's predictions to the patient's  │
+│  real RNA-seq data using correlation statistics  │
+│  (Pearson & Spearman).                          │
 │  → output/validation_table.csv                  │
 │  → output/validation_correlations.csv           │
 └─────────────────────┬───────────────────────────┘
                       │
                       ▼
 ┌─────────────────────────────────────────────────┐
-│  s6_gtex_baseline.py                            │
-│  GTEx API → normal-tissue expression baselines  │
-│  Silencing classification per gene              │
+│  Step 6 — s6_gtex_baseline.py                   │
+│  Compare tumour gene expression to healthy lung │
+│  tissue (GTEx database) and flag genes that are │
+│  abnormally silenced or overexpressed.          │
 │  → output/gtex_comparison.csv                   │
 └─────────────────────────────────────────────────┘
 ```
@@ -77,46 +119,34 @@ TCGA LUAD VCF (paired tumor/normal)
 
 ```
 ├── data/
-│   ├── Example_RNA.csv                  # Patient RNA-seq data (GENCODE v36 gene IDs + TPM)
-│   └── VCF_File/                        # TCGA LUAD somatic VCF (MuTect2)
+│   ├── Example_RNA.csv                  # Patient RNA-seq data (gene IDs + expression in TPM)
+│   └── VCF_File/                        # TCGA lung cancer mutation file (from MuTect2 variant caller)
 ├── docs/
-│   ├── GENE_DILUTION.md                 # Gene dilution problem & GeneMaskLFCScorer validation
-│   ├── METRICS.md                       # Scoring metric definitions
-│   ├── PIPELINE_REPORT.md               # Comprehensive reader-friendly pipeline report
+│   ├── GENE_DILUTION.md                 # Why GeneMaskLFCScorer is needed (gene dilution problem)
+│   ├── METRICS.md                       # Definitions of every scoring metric
+│   ├── PIPELINE_REPORT.md               # Reader-friendly summary of the full pipeline
 │   ├── RESULTS.md                       # Initial prediction results
 │   ├── TEST_COVERAGE.md                 # Test coverage summary
-│   ├── UCSC_CONTEXT.md                  # UCSC Genome Browser context note
+│   ├── UCSC_CONTEXT.md                  # Note on UCSC Genome Browser context
 │   └── VALIDATION.md                    # RNA-seq correlation analysis
 ├── notebooks/
-│   └── prediction_vs_rnaseq.ipynb       # Prediction vs RNA-seq exploration
-├── output/                              # Pipeline outputs (git-ignored data files)
-├── src/
-│   ├── __init__.py                      # Package marker
-│   ├── constants.py                     # Shared paths & configuration constants
-│   ├── exceptions.py                    # PipelineInputError exception
-│   ├── utils.py                         # CSQ parsing, gene ID lookup, validation helpers
-│   ├── s1_initial_vcf_processing.py     # Somatic variant extraction (normal=0/0)
-│   ├── s2_vcf_filter.py                 # Variant filtering (CLI: --impact, --output)
-│   ├── s3_gene_expression_prediction.py # AlphaGenome predictions (GeneMaskLFCScorer)
-│   ├── s4_score_variants.py             # Biological scoring (VAF, TPM, NMD, priority)
-│   ├── s5_validate.py                   # Correlation analysis against patient RNA-seq
-│   └── s6_gtex_baseline.py              # GTEx normal-tissue expression comparison
-├── tests/                               # 210 unit & integration tests
-│   ├── conftest.py                      # Shared fixtures
-│   ├── test_initial_vcf_processing.py   # s1 somatic extraction tests
-│   ├── test_utils.py                    # Core utility tests
-│   ├── test_utils_extra.py              # Validation helper & VAF/NMD tests
-│   ├── test_prediction.py               # s3 prediction module tests
-│   ├── test_score_variants.py           # s4 scoring tests
-│   ├── test_validate.py                 # s5 validation tests
-│   └── test_gtex_baseline.py            # s6 GTEx baseline tests
-├── .github/workflows/
-│   └── tests.yml                        # CI: pytest on push/PR to main (micromamba)
-├── environment.yml                      # Conda environment spec (pinned deps)
-├── pyproject.toml                       # PEP 621 package metadata & build config
-├── .env.example                         # Template for API key configuration
-├── log/                                 # Run logs
-└── PLANNING.md                          # Execution roadmap & progress tracker
+│   └── prediction_vs_rnaseq.ipynb       # Interactive exploration: predictions vs real expression
+├── output/                              # Pipeline outputs (auto-generated, not stored in git)
+├── src/                                 # Source code for each pipeline step
+│   ├── constants.py                     # Shared settings (file paths, thresholds, tissue IDs)
+│   ├── exceptions.py                    # Custom error types
+│   ├── utils.py                         # Helper functions (parsing, gene ID lookup, etc.)
+│   ├── s1_initial_vcf_processing.py     # Step 1 — somatic mutation extraction
+│   ├── s2_vcf_filter.py                 # Step 2 — variant filtering (quality + impact)
+│   ├── s3_gene_expression_prediction.py # Step 3 — AlphaGenome expression prediction
+│   ├── s4_score_variants.py             # Step 4 — biological scoring (VAF, TPM, NMD)
+│   ├── s5_validate.py                   # Step 5 — correlation with real RNA-seq data
+│   └── s6_gtex_baseline.py              # Step 6 — comparison to healthy tissue (GTEx)
+├── tests/                               # 210 automated tests to catch bugs
+│   └── ...
+├── environment.yml                      # Conda environment specification (pinned dependencies)
+├── pyproject.toml                       # Python package metadata
+└── PLANNING.md                          # Project roadmap & progress tracker
 ```
 
 ---
@@ -125,22 +155,22 @@ TCGA LUAD VCF (paired tumor/normal)
 
 ### Prerequisites
 
-- Python 3.11+
-- A valid **AlphaGenome API key** (stored in a `.env` file at the project root)
+- **Python 3.11 or newer** — the programming language the pipeline is written in.
+- A valid **AlphaGenome API key** — required to query the AI model. Store it in a `.env` file at the project root (see Configuration below).
 
 ### Installation
 
 ```bash
-# Clone the repository
+# 1. Download ("clone") the repository to your computer
 git clone https://github.com/<your-username>/variant-to-expression-analysis.git
 cd variant-to-expression-analysis
 
-# Create the conda environment (installs all pinned deps + editable package)
+# 2. Create a conda environment with all the required software libraries
 conda env create -f environment.yml
 conda activate biotech_challenge
 ```
 
-Alternatively, install with pip alone:
+If you prefer pip over conda:
 
 ```bash
 pip install -e ".[dev]"
@@ -148,51 +178,51 @@ pip install -e ".[dev]"
 
 ### Configuration
 
-Copy the example env file and add your API key:
-
 ```bash
+# Copy the template environment file and fill in your API key
 cp .env.example .env
-# Edit .env and set ALPHAGENOME_API_KEY=your_real_key
+# Then open .env in a text editor and set:
+#   ALPHAGENOME_API_KEY=your_real_key
 ```
 
 ### Running the Pipeline
 
-Activate the environment and run scripts sequentially:
+Run each step in order — the output of one step feeds into the next:
 
 ```bash
 conda activate biotech_challenge
 
-# Step 1: Extract somatic variants from paired VCF
+# Step 1: Extract somatic (tumour-only) mutations
 python src/s1_initial_vcf_processing.py                   # → output/somatic_variants.txt
 
-# Step 2: Filter variants (defaults to HIGH impact; use --impact to change)
+# Step 2: Filter to high-confidence, high-impact mutations
 python src/s2_vcf_filter.py                              # → output/high_impact_variants.vcf
-python src/s2_vcf_filter.py --impact HIGH,MODERATE        # Include missense variants
-python src/s2_vcf_filter.py --impact HIGH -o custom.vcf   # Custom output path
+python src/s2_vcf_filter.py --impact HIGH,MODERATE        # Optionally include moderate-impact mutations too
+python src/s2_vcf_filter.py --impact HIGH -o custom.vcf   # Or write to a custom output file
 
-# Step 3: Predict expression via AlphaGenome (expensive — uses API)
+# Step 3: Get AlphaGenome's expression predictions (uses the API — can be slow/expensive)
 python src/s3_gene_expression_prediction.py               # → output/raw_predictions.tsv
-python src/s3_gene_expression_prediction.py --resume      # Resume interrupted run
+python src/s3_gene_expression_prediction.py --resume      # Resume if the run was interrupted
 
-# Step 4: Score variants with biological context (cheap — no API)
+# Step 4: Add biological context scores (fast — no API calls needed)
 python src/s4_score_variants.py                           # → output/scored_variants.tsv
 
-# Step 5: Validate predictions against patient RNA-seq
+# Step 5: Validate predictions against the patient's real RNA-seq data
 python src/s5_validate.py                                 # → output/validation_table.csv
                                                           # → output/validation_correlations.csv
 
-# Step 6: Compare with GTEx normal-tissue baselines
+# Step 6: Compare tumour expression to healthy tissue (GTEx)
 python src/s6_gtex_baseline.py                            # → output/gtex_comparison.csv
-python src/s6_gtex_baseline.py --tissue Lung              # default tissue
+python src/s6_gtex_baseline.py --tissue Lung              # (Lung is the default tissue)
 ```
 
 ### Running Tests
 
 ```bash
-# Run all 210 tests
+# Run all 210 automated tests
 python -m pytest tests/ -v
 
-# With coverage report
+# With a coverage report (shows which lines of code are tested)
 python -m coverage run --source=src -m pytest tests/ -q
 python -m coverage report --show-missing
 ```
@@ -206,22 +236,25 @@ See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for a detailed coverage break
 
 ## Key Details
 
-| Parameter | Value |
-|---|---|
-| Cancer type | Lung Adenocarcinoma (LUAD) |
-| Variant caller | GATK MuTect2 |
-| Genome build | GRCh38 / hg38 |
-| AlphaGenome tissue | Lung (`UBERON:0002048`) |
-| Prediction window | 1,048,576 bp (1 MB) centered on variant |
-| Expression metric | Per-gene exon-masked log₂ fold-change (GeneMaskLFCScorer) |
-| Gain threshold | log₂ FC > 1.0 |
-| Loss threshold | log₂ FC < −1.0 |
+| Parameter | Value | What it means |
+|---|---|---|
+| Cancer type | Lung Adenocarcinoma (LUAD) | A common subtype of non-small-cell lung cancer |
+| Variant caller | GATK MuTect2 | The software that identified mutations by comparing tumour vs normal DNA |
+| Genome build | GRCh38 / hg38 | The version of the human reference genome used as a baseline |
+| AlphaGenome tissue | Lung (`UBERON:0002048`) | The AI model is told to make lung-specific predictions |
+| Prediction window | 1,048,576 bp (~1 million bases) | How much DNA context the model reads around each mutation |
+| Expression metric | Per-gene exon-masked log₂ fold-change | The predicted change in gene expression (see glossary above) |
+| Gain threshold | LOG2_FC > 1.0 | Expression at least *doubled* — flagged as a gain |
+| Loss threshold | LOG2_FC < −1.0 | Expression at least *halved* — flagged as a loss |
 
-For a detailed explanation of all scoring metrics (VAF, TPM, NMD, vaccine priority), see [docs/METRICS.md](docs/METRICS.md).
-For initial prediction results and interpretation (**model predictions only — not yet validated**), see [docs/RESULTS.md](docs/RESULTS.md).
-For the RNA-seq correlation analysis, see [docs/VALIDATION.md](docs/VALIDATION.md).
-For why UCSC Genome Browser context retrieval is not needed, see [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md).
-For the test suite coverage summary, see [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md).
+### Further reading
+
+- [docs/METRICS.md](docs/METRICS.md) — detailed explanation of every scoring metric (VAF, TPM, NMD, vaccine priority).
+- [docs/RESULTS.md](docs/RESULTS.md) — initial prediction results and interpretation (**model predictions only — not yet validated**).
+- [docs/VALIDATION.md](docs/VALIDATION.md) — RNA-seq correlation analysis (how well do the AI's predictions match reality?).
+- [docs/GENE_DILUTION.md](docs/GENE_DILUTION.md) — the gene dilution problem and why GeneMaskLFCScorer is needed.
+- [docs/UCSC_CONTEXT.md](docs/UCSC_CONTEXT.md) — why UCSC Genome Browser context retrieval is not needed.
+- [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) — test suite coverage summary.
 
 ---
 
