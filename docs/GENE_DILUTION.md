@@ -1,21 +1,25 @@
-# Gene Dilution Problem in Whole-Window Expression Summing
+# Gene Dilution Problem — Identified & Fixed
 
 ## Problem Statement
 
-The pipeline's step 3 (`s3_gene_expression_prediction.py`) predicts expression
-changes by summing AlphaGenome's RNA-seq predictions across an entire **1 MB
+An earlier version of the pipeline’s step 3 (`s3_gene_expression_prediction.py`) predicted
+expression changes by summing AlphaGenome’s RNA-seq predictions across an entire **1 MB
 window** centred on the variant:
 
 ```python
+# OLD APPROACH (no longer used)
 ref_sum = float(np.sum(outputs.reference.rna_seq.values))
 alt_sum = float(np.sum(outputs.alternate.rna_seq.values))
 ```
 
 Because the 1 MB window usually contains **many genes**, the expression signal
-of the target gene is diluted by the background expression of its neighbours.
-A variant that meaningfully changes the target gene's expression may produce
-a negligible `ref_sum` vs `alt_sum` difference when the neighbouring genes'
-expression dominates.
+of the target gene was diluted by the background expression of its neighbours.
+A variant that meaningfully changes the target gene’s expression produced
+a negligible `ref_sum` vs `alt_sum` difference when the neighbouring genes’
+expression dominated.
+
+**This problem has been fixed.** The pipeline now uses `GeneMaskLFCScorer`
+(see “Implemented Fix” below).
 
 ## Investigation: How Many Genes Per Window?
 
@@ -40,10 +44,11 @@ summed together with 98 other genes. The MMP25 gene body spans only ~14 kb of
 the 1,048,576 bp window — roughly 1.3 % of the total. Any variant effect on
 MMP25 is buried under the signal of its neighbours.
 
-## Recommended Fix
+## Implemented Fix
 
-AlphaGenome's SDK already provides a purpose-built solution:
+AlphaGenome’s SDK provides a purpose-built solution:
 **`model.score_variant()` with `GeneMaskLFCScorer`**.
+This is now the approach used in `s3_gene_expression_prediction.py`.
 
 This scorer:
 
@@ -55,7 +60,7 @@ This scorer:
 4. Returns an AnnData object with one score per gene × track combination,
    including `gene_id`, `gene_name`, `gene_type`, and `gene_strand`.
 
-### Before (current code)
+### Before (old code — no longer used)
 
 ```python
 outputs = model.predict_variant(
@@ -67,7 +72,7 @@ ref_sum = float(np.sum(outputs.reference.rna_seq.values))
 alt_sum = float(np.sum(outputs.alternate.rna_seq.values))
 ```
 
-### After (recommended)
+### After (current code)
 
 ```python
 from alphagenome.models import variant_scorers

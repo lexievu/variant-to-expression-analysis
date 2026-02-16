@@ -19,16 +19,16 @@
 
 ## Per-Variant Table
 
-| Gene | REF_EXPR | ALT_EXPR | log₂FC | TPM | Raw Counts | VAF | NMD | Priority |
-|------|----------|----------|--------|-----|------------|-----|-----|----------|
-| FAM107A | 106,169 | 106,163 | −0.0001 | 10.14 | 608 | 0.236 | No | HIGH |
-| LAMC3 | 141,537 | 141,972 | +0.0044 | 25.02 | 1,411 | 0.456 | No | HIGH |
-| DOT1L | 257,204 | 257,515 | +0.0017 | 6.31 | 853 | 0.351 | No | HIGH |
-| TTC7A | 134,680 | 134,496 | −0.0020 | 26.33 | 2,186 | 0.250 | Yes | LOW |
-| TMTC1 | 34,362 | 34,393 | +0.0013 | 4.90 | 367 | 0.171 | No | MEDIUM |
-| MMP25 | 218,183 | 218,130 | −0.0004 | 4.47 | 244 | 0.135 | No | MEDIUM |
-| ERBB2 | 272,124 | 271,699 | −0.0023 | 222.22 | 11,791 | 0.360 | Yes | LOW |
-| ELFN1-AS1 | 70,284 | 70,282 | −0.0000 | 0.44 | 38 | 0.415 | No | MEDIUM |
+| Gene | log₂FC | TPM | Raw Counts | VAF | NMD | Priority |
+|------|--------|-----|------------|-----|-----|----------|
+| FAM107A | −0.0001 | 10.14 | 608 | 0.236 | No | HIGH |
+| LAMC3 | +0.0044 | 25.02 | 1,411 | 0.456 | No | HIGH |
+| DOT1L | +0.0017 | 6.31 | 853 | 0.351 | No | HIGH |
+| TTC7A | −0.0020 | 26.33 | 2,186 | 0.250 | Yes | LOW |
+| TMTC1 | +0.0013 | 4.90 | 367 | 0.171 | No | MEDIUM |
+| MMP25 | −0.0004 | 4.47 | 244 | 0.135 | No | MEDIUM |
+| ERBB2 | −0.0023 | 222.22 | 11,791 | 0.360 | Yes | LOW |
+| ELFN1-AS1 | −0.0000 | 0.44 | 38 | 0.415 | No | MEDIUM |
 
 Full data: [`output/validation_table.csv`](../output/validation_table.csv)
 
@@ -36,36 +36,32 @@ Full data: [`output/validation_table.csv`](../output/validation_table.csv)
 
 ## Correlation Analysis
 
-We computed Pearson and Spearman correlations between AlphaGenome's predicted expression values and the patient's actual RNA-seq measurements. The question: **does the model's predicted expression magnitude track real-world gene expression levels?**
+We computed Pearson and Spearman correlations between AlphaGenome’s predicted fold-change (LOG2_FC, from `GeneMaskLFCScorer`) and the patient’s actual RNA-seq measurements. The question: **does the model’s predicted fold-change track real-world gene expression levels?**
 
 ### Results
 
 | Comparison | Transform | n | Pearson r | p-value | Spearman ρ | p-value |
 |------------|-----------|---|-----------|---------|------------|---------|
-| ALT_EXPR vs TPM | none | 8 | +0.548 | 0.160 | +0.476 | 0.233 |
-| ALT_EXPR vs TPM | log₁₀ | 8 | +0.511 | 0.195 | +0.476 | 0.233 |
-| REF_EXPR vs TPM | none | 8 | +0.550 | 0.158 | +0.476 | 0.233 |
-| REF_EXPR vs TPM | log₁₀ | 8 | +0.512 | 0.195 | +0.476 | 0.233 |
 | LOG2_FC vs TPM | none | 8 | −0.472 | 0.237 | −0.357 | 0.385 |
-| ALT_EXPR vs raw counts | none | 8 | +0.546 | 0.161 | +0.548 | 0.160 |
-| ALT_EXPR vs raw counts | log₁₀ | 8 | +0.430 | 0.288 | +0.548 | 0.160 |
-| ALT_EXPR vs TPM (expressed only) | none | 7 | +0.521 | 0.230 | +0.286 | 0.535 |
+| LOG2_FC vs TPM | log₁₀ | 8 | * | * | * | * |
+| LOG2_FC vs raw counts | none | 8 | * | * | * | * |
+| LOG2_FC vs TPM (expressed only) | none | 7 | * | * | * | * |
+
+\* See `output/validation_correlations.csv` for full values.
 
 Full data: [`output/validation_correlations.csv`](../output/validation_correlations.csv)
 
 ### Interpretation
 
-**No correlations reach statistical significance** (all p > 0.05). However, the sample size (n = 8) gives very low statistical power — with only 8 data points, a correlation would need r ≈ 0.71 to reach significance at α = 0.05.
+**No correlations reach statistical significance** (all p > 0.05). However, the sample size (n = 8) gives very low statistical power — with only 8 data points, a correlation would need |r| ≈ 0.85 to reach significance at α = 0.05.
 
 That said, several patterns are worth noting:
 
-1. **Moderate positive trend (r ≈ 0.55).** Both ALT_EXPR and REF_EXPR show a consistent positive Pearson correlation with observed TPM. Genes with higher predicted expression sums tend to have higher real-world TPM. This is directionally encouraging but far from conclusive.
+1. **Weak negative trend (r ≈ −0.47).** LOG2_FC shows a negative Pearson correlation with observed TPM. Genes with the most negative predicted fold-changes tend to have the highest TPM. This may reflect that highly-expressed genes have more room to decrease, or it may simply be noise.
 
-2. **REF ≈ ALT.** The REF and ALT correlations are nearly identical (r = 0.550 vs 0.548), which is consistent with the model predicting essentially no expression change for any of these variants (all log₂FC < ±0.005).
+2. **All fold-changes are near zero.** All 8 variants have |LOG2_FC| < 0.005, so there is essentially no predicted expression change for any variant. The correlation captures a directional tendency among very small values.
 
-3. **LOG2_FC negatively correlated with TPM (r = −0.47).** This is weak and non-significant, but hints that higher-expressed genes tend to have slightly more negative predicted fold-changes. This could be noise, or it could reflect a subtle model behaviour where abundant transcripts are predicted to be more sensitive to disruption.
-
-4. **ERBB2 dominates.** With TPM = 222 and raw counts = 11,791, ERBB2 is a high-leverage point. Removing it would likely change the correlations substantially. Any interpretation must acknowledge that a single outlier drives much of the signal.
+3. **ERBB2 dominates.** With TPM = 222 and LOG2_FC = −0.002, ERBB2 is a high-leverage point. Removing it changes the Pearson r from −0.472 to +0.138 — a dramatic shift. Any interpretation must acknowledge that a single outlier drives the correlation.
 
 ---
 
@@ -109,7 +105,7 @@ Script: [`src/s6_gtex_baseline.py`](../src/s6_gtex_baseline.py)
 
 1. **Sample size is very small (n = 8).** Correlation statistics have low power and should be interpreted with extreme caution. These results are exploratory, not confirmatory.
 
-2. **Predicted expression and TPM measure different things.** AlphaGenome's REF_EXPR / ALT_EXPR are summed RNA-seq track values over a 1 MB window centred on the variant. This includes contributions from *all genes and regulatory elements* within that window, not just the target gene. TPM is a normalised per-gene measure. The two are not directly comparable in absolute terms — only relative trends are meaningful.
+2. **Fold-change vs. absolute level.** AlphaGenome’s `GeneMaskLFCScorer` outputs a per-gene exon-masked log₂ fold-change (how much expression changes due to the variant), while TPM measures the absolute expression level. A gene can have high TPM but near-zero fold-change. Comparing fold-change to absolute level tests whether variant impact correlates with expression magnitude — a useful but indirect relationship.
 
 3. **All variants are Neutral.** Because AlphaGenome predicts essentially zero expression change for all 8 variants, we cannot assess whether the model's *predicted direction of change* agrees with reality. A meaningful validation of fold-change accuracy requires variants where the model predicts a non-trivial gain or loss.
 
@@ -125,18 +121,23 @@ All plots and the full influence/power analysis are in [`notebooks/prediction_vs
 
 | Plot | Description |
 |------|-------------|
-| Scatter: ALT_EXPR vs TPM | Linear scale, coloured by vaccine priority, with regression line |
-| Scatter: log-log | log₁₀ transform compresses the ERBB2 outlier |
-| Scatter: ALT_EXPR vs raw counts | Avoids TPM normalisation artefacts |
-| Bar chart: rescaled predicted vs observed | Min-max rescaled ALT_EXPR alongside TPM per gene |
-| Heatmap: multi-metric summary | Z-scored log₂FC, VAF, TPM, NMD, priority per gene |
-| ERBB2 influence analysis | Side-by-side scatter with/without ERBB2 (r drops 0.548 → 0.060) |
-| Power curve | Shows n = 24 needed for 80% power at observed r ≈ 0.55 |
+| Scatter: LOG2_FC vs TPM | Linear scale, coloured by vaccine priority, with regression line |
+| Scatter: |LOG2_FC| vs log₁₀(TPM) | Magnitude of predicted fold-change vs log-transformed expression |
+| Scatter: LOG2_FC vs raw counts | Avoids TPM normalisation artefacts |
+| Correlation summary table | Pearson r, Spearman ρ, and p-values for all comparisons |
+| Bar chart: LOG2_FC & TPM per gene | Dual-axis: predicted fold-change alongside observed TPM |
+| Heatmap: multi-metric summary | Z-scored LOG2_FC, VAF, log₁₀(TPM), NMD, priority per gene |
+| ERBB2 influence analysis | Side-by-side scatter with/without ERBB2 (r changes −0.472 → +0.138) |
+| Power curve | Shows n = 33 needed for 80% power at observed |r| = 0.47 |
+| GTEx paired bar chart | Tumour vs normal lung TPM per gene |
+| GTEx divergence plot | log₂ tumour/GTEx ratio per gene |
+| Dual scatter: LOG2_FC vs tumour & GTEx | Tumour r = −0.472, GTEx r = −0.072 |
+| Three-source heatmap | Z-scored LOG2_FC, tumour TPM, GTEx TPM |
 
 ---
 
 ## Next Steps
 
-- [ ] Expand to HIGH + MODERATE impact variants (46 total) for better statistical power
+- [ ] Expand to HIGH + MODERATE impact variants (~46 total) for better statistical power
 - [x] ~~Add GTEx lung baselines to distinguish tumour-specific from tissue-normal expression~~ → See GTEx section above.
-- [ ] Consider per-gene normalisation of AlphaGenome output (divide by window gene count) for a fairer comparison with TPM
+- [x] ~~Per-gene normalisation of AlphaGenome output~~ → Solved by switching to `GeneMaskLFCScorer` (exon-masked per-gene fold-change). See [GENE_DILUTION.md](GENE_DILUTION.md).

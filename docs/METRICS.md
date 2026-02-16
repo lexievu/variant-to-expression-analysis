@@ -20,9 +20,7 @@ The prediction script outputs a TSV with the following columns:
 | `ALT` | str | Alternate allele |
 | `GENE` | str | Gene symbol (from VEP CSQ) |
 | `GENE_ID` | str | Ensembl gene ID (version-stripped) |
-| `REF_EXPR` | float | AlphaGenome predicted expression — reference allele |
-| `ALT_EXPR` | float | AlphaGenome predicted expression — alternate allele |
-| `LOG2_FC` | float | log₂(ALT_EXPR / REF_EXPR) fold-change |
+| `LOG2_FC` | float | Per-gene exon-masked log₂ fold-change (from AlphaGenome’s GeneMaskLFCScorer) |
 | `STATUS` | str | Gain_of_Expression / Loss_of_Expression / Neutral |
 | `VAF` | float | Tumour variant allele frequency |
 | `OBSERVED_TPM` | float | Patient RNA-seq expression (TPM) |
@@ -36,7 +34,7 @@ The prediction script outputs a TSV with the following columns:
 
 ### 1. AlphaGenome Predicted Fold-Change (`LOG2_FC`, `STATUS`)
 
-**What it measures:** Whether the somatic mutation is predicted to alter gene expression relative to the reference genome.
+**What it measures:** Whether the somatic mutation is predicted to alter gene expression relative to the reference genome. The LOG2_FC is computed by AlphaGenome’s `GeneMaskLFCScorer`, which masks the RNA-seq prediction to only the target gene’s exon bins and computes the per-gene log₂ fold-change between alternate and reference alleles.
 
 **Why it matters:** A mutation that causes a predicted loss of expression (log₂FC < −1.0) suggests the mutant allele will not be transcribed at meaningful levels — the neoantigen won't be produced. Conversely, neutral or gain-of-expression predictions suggest the mutant protein will be made.
 
@@ -127,7 +125,7 @@ ELSE:
 
 1. **No MHC binding prediction.** Even a well-expressed neoantigen is useless if it cannot be presented by the patient's HLA alleles. Tools like NetMHCpan could be integrated as a downstream filter.
 
-2. **No GTEx baseline.** We do not yet compare tumour TPM against normal tissue expression (GTEx lung). A gene silenced in both tumour and normal lung is a tissue-level absence, not a tumour-specific event.
+2. **GTEx baseline now integrated.** Step 6 (`s6_gtex_baseline.py`) compares tumour TPM against GTEx normal lung medians to distinguish tumour-specific expression changes from tissue-level biology.
 
 3. **AlphaGenome tissue specificity.** Predictions use UBERON:0002048 (Lung) but the model's tissue-specific accuracy for cancer samples has not been independently validated.
 

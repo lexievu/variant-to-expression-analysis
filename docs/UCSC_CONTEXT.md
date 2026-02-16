@@ -12,6 +12,7 @@ AlphaGenome's Python SDK provides two key abstractions:
 interval = genome.Interval("chr7", 55_000_000, 56_048_576)   # 1 MB window
 variant  = genome.Variant("chr7", 55_191_822, "C", "T")      # somatic SNV
 
+# Low-level API (used internally by score_variant):
 outputs = model.predict_variant(
     interval=interval,
     variant=variant,
@@ -19,6 +20,10 @@ outputs = model.predict_variant(
     requested_outputs=[dna_client.OutputType.RNA_SEQ],
 )
 ```
+
+> **Note:** The pipeline calls `model.score_variant()` with
+> `GeneMaskLFCScorer` rather than `predict_variant` directly.
+> The example above illustrates what happens *internally*.
 
 Internally, `predict_variant`:
 
