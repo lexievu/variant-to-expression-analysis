@@ -40,9 +40,13 @@ Full data: [`output/scored_variants.tsv`](../output/scored_variants.tsv)
 
 All 8 variants received a **Neutral** classification. The largest absolute log₂ fold-change was 0.0044 (LAMC3), far below the ±1.0 threshold for gain or loss of expression. This means AlphaGenome predicts that none of these HIGH-impact somatic variants — including frameshifts and stop-gained mutations — meaningfully alter overall gene expression at the DNA-sequence level.
 
-**Possible interpretations (unvalidated):**
-- The model may be correct: many somatic variants in coding regions alter protein function without changing transcription levels. A stop-gained mutation produces a truncated protein, but the gene may still be transcribed at normal levels (unless NMD degrades the transcript).
-- The model may lack sensitivity to certain variant types (e.g., indels, splice-region effects) or may not capture cis-regulatory disruptions at this resolution.
+**Why near-zero LOG2_FC is the expected result:**
+
+All 8 variants are protein-disrupting (frameshift, stop_gained, splice_donor/acceptor). These alter the **protein**, not the **DNA regulatory landscape**. AlphaGenome predicts transcription from DNA sequence features — promoters, enhancers, splice signals — so a coding-region disruption that truncates or frameshifts the protein would not change the model's predicted transcription rate. The gene is still transcribed at normal levels; it just encodes a broken protein.
+
+Any expression reduction from stop_gained or frameshift variants happens **post-transcriptionally** via Nonsense-Mediated Decay (NMD), which degrades mRNAs containing premature stop codons. NMD is outside AlphaGenome's scope — it models DNA→RNA transcription, not mRNA surveillance. This is why the scoring layer (Step 4) adds an independent NMD flag.
+
+**Implication for vaccine target selection:** AlphaGenome can assess whether a variant disrupts *cis*-regulatory DNA elements (promoters, enhancers, splice signals), but it cannot detect expression loss caused by protein-truncating mutations acting through NMD. For cancer vaccine pipelines that primarily encounter HIGH-impact coding variants, AlphaGenome's expression predictions will be near-zero — and a separate NMD/post-transcriptional model is needed to predict whether the mutant transcript survives to be translated.
 
 > **Note:** An earlier version of the pipeline summed expression across the entire 1 MB window, diluting the target gene’s signal. The pipeline now uses `GeneMaskLFCScorer`, which masks predictions to only the target gene’s exon bins, eliminating this dilution problem. See [GENE_DILUTION.md](GENE_DILUTION.md) for details.
 

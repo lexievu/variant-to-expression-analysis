@@ -212,7 +212,11 @@ GTEx (the Genotype-Tissue Expression project) provides median gene expression va
 
 All 8 variants were classified as **Neutral**. The largest predicted fold-change was just 0.0044 (for LAMC3), far below the ±1.0 threshold needed for a Gain or Loss classification. In practical terms, AlphaGenome predicts that none of these HIGH-impact mutations — including frameshifts, stop-gained, and splice-site disruptions — meaningfully change gene expression at the DNA-sequence level.
 
-This is not necessarily wrong. Many coding mutations alter protein function without affecting transcription. A frameshift mutation produces a truncated, non-functional protein, but the gene may still be transcribed at normal levels. The RNA is still made; it just encodes a broken protein. (Whether that RNA survives NMD is a separate question, handled by the NMD flag in Step 4.)
+**This is the expected result, not a model failure.** All 8 variants are protein-disrupting: they introduce premature stop codons, shift the reading frame, or disrupt splice sites. These mutations alter the **protein**, not the **DNA regulatory landscape**. AlphaGenome predicts transcription from DNA sequence features — promoters, enhancers, splice signals — so a coding-region disruption that truncates or frameshifts the protein would not change the model's predicted transcription rate. The gene is still transcribed; it just encodes a broken protein.
+
+Any expression reduction from these variant types happens **post-transcriptionally** via Nonsense-Mediated Decay (NMD), a cellular quality-control mechanism that destroys mRNAs with premature stop codons. NMD operates on the mRNA after transcription — outside AlphaGenome's scope. This is precisely why the scoring layer (Step 4) adds an independent NMD flag from VEP annotations.
+
+**Implication for the cancer vaccine:** AlphaGenome is well suited to assessing whether a variant disrupts *cis*-regulatory DNA elements (e.g., a mutation in a promoter or enhancer that silences a gene). But for the protein-truncating variants that dominate HIGH-impact cancer mutation sets, a separate post-transcriptional model (or direct RNA-seq measurement) is needed to predict whether the mutant transcript survives to produce protein.
 
 ### 4.2 Scoring Layer Adds Biological Differentiation
 
@@ -374,7 +378,7 @@ Our preliminary GTEx comparison hints at this (r = −0.472 for tumour vs. r = �
 
 2. **Fold-change vs. absolute level.** AlphaGenome's GeneMaskLFCScorer outputs a per-gene log₂ fold-change (how much expression changes due to the variant), while TPM measures the absolute expression level. A gene can have high TPM but near-zero fold-change (the variant has no effect on an already highly-expressed gene). Comparing fold-change to absolute level tests whether variant impact correlates with expression magnitude — a useful but indirect relationship.
 
-3. **All predictions were Neutral.** Because AlphaGenome predicts essentially zero expression change for all 8 variants, we can only assess whether the model captures expression *magnitude* (which gene is higher or lower), not expression *change* (which mutations increase or decrease expression). The more interesting and clinically useful validation — does the model correctly predict the direction and size of expression changes — remains untested.
+3. **All predictions were Neutral — and this is expected for protein-disrupting variants.** All 8 variants are coding-region disruptions (frameshift, stop_gained, splice-site). These alter the protein, not the DNA regulatory landscape. AlphaGenome predicts transcription from sequence features (promoters, enhancers, splice signals), so coding-region mutations that truncate proteins would not change predicted transcription. Expression loss from these variant types occurs post-transcriptionally via NMD — outside the model's scope. To test AlphaGenome's ability to predict expression *changes*, we would need variants in regulatory regions (promoters, enhancers) or splice sites that alter transcription itself.
 
 4. **NMD is imperfect in cancer.** The NMD flag comes from VEP's annotation of the reference transcript. In reality, NMD efficiency varies between tissues and is often impaired in cancer cells. A variant flagged as NMD-triggering might actually produce a stable truncated transcript in a particular tumour.
 

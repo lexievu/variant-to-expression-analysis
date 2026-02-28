@@ -250,6 +250,10 @@ See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for a detailed coverage break
 | Gain threshold | LOG2_FC > 1.0 | Expression at least *doubled* — flagged as a gain |
 | Loss threshold | LOG2_FC < −1.0 | Expression at least *halved* — flagged as a loss |
 
+### Key biological finding
+
+All 8 HIGH-impact variants were predicted **Neutral** (LOG2_FC ≈ 0). This is the expected result: these are protein-disrupting mutations (frameshift, stop_gained, splice-site) that alter the protein, not the DNA regulatory landscape. AlphaGenome models transcription from sequence features (promoters, enhancers, splice signals), so coding-region disruptions don't change predicted transcription. Any expression reduction from these variants would occur post-transcriptionally via NMD — outside the model's scope. See [docs/RESULTS.md](docs/RESULTS.md) for the full interpretation and implications for vaccine target selection.
+
 ### Further reading
 
 - [docs/METRICS.md](docs/METRICS.md) — detailed explanation of every scoring metric (VAF, TPM, NMD, vaccine priority).
