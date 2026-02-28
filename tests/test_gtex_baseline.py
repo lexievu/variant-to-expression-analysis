@@ -105,6 +105,58 @@ class TestClassifySilencing:
 
 
 # ===================================================================
+# directional_concordance
+# ===================================================================
+
+class TestDirectionalConcordance:
+    """Test sign(LOG2_FC) vs sign(tumour_TPM − GTEx_TPM) concordance."""
+
+    # --- No GTEx data ---
+    def test_none_gtex(self):
+        assert gtex_mod.directional_concordance(-0.5, 10.0, None) == "no GTEx data"
+
+    def test_nan_gtex(self):
+        assert gtex_mod.directional_concordance(-0.5, 10.0, float("nan")) == "no GTEx data"
+
+    # --- Neutral cases ---
+    def test_zero_log2fc(self):
+        assert gtex_mod.directional_concordance(0.0, 10.0, 5.0) == "neutral"
+
+    def test_equal_tpm(self):
+        """tumour == GTEx → obs_sign = 0 → neutral."""
+        assert gtex_mod.directional_concordance(-0.5, 10.0, 10.0) == "neutral"
+
+    def test_both_zero(self):
+        """LOG2_FC = 0 and tumour == GTEx → neutral."""
+        assert gtex_mod.directional_concordance(0.0, 5.0, 5.0) == "neutral"
+
+    # --- Concordant ---
+    def test_both_positive(self):
+        """Predicted up, tumour > GTEx → concordant."""
+        assert gtex_mod.directional_concordance(0.5, 20.0, 10.0) == "concordant"
+
+    def test_both_negative(self):
+        """Predicted down, tumour < GTEx → concordant."""
+        assert gtex_mod.directional_concordance(-0.3, 5.0, 30.0) == "concordant"
+
+    # --- Discordant ---
+    def test_pred_up_obs_down(self):
+        """Predicted up, tumour < GTEx → discordant."""
+        assert gtex_mod.directional_concordance(0.2, 5.0, 30.0) == "discordant"
+
+    def test_pred_down_obs_up(self):
+        """Predicted down, tumour > GTEx → discordant."""
+        assert gtex_mod.directional_concordance(-0.1, 50.0, 10.0) == "discordant"
+
+    # --- Small magnitudes (realistic near-zero LOG2_FC) ---
+    def test_tiny_positive_concordant(self):
+        assert gtex_mod.directional_concordance(0.001, 30.0, 20.0) == "concordant"
+
+    def test_tiny_negative_discordant(self):
+        assert gtex_mod.directional_concordance(-0.0001, 200.0, 50.0) == "discordant"
+
+
+# ===================================================================
 # _get_json
 # ===================================================================
 
@@ -279,6 +331,7 @@ class TestGtexBaselinePipeline:
             assert "SILENCING_CLASS" in df.columns
             assert "GTEX_LUNG_TPM" in df.columns
             assert "TUMOUR_VS_GTEX_RATIO" in df.columns
+            assert "DIRECTION_MATCH" in df.columns
 
     @patch("src.s6_gtex_baseline.fetch_gtex_baselines")
     def test_pipeline_classification(self, mock_fetch):

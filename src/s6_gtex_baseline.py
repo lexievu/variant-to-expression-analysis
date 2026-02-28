@@ -200,6 +200,33 @@ def classify_silencing(tumour_tpm, gtex_tpm):
     return "comparable"
 
 
+def directional_concordance(log2_fc, tumour_tpm, gtex_tpm):
+    """Check whether the predicted direction matches the observed direction.
+
+    Compares ``sign(LOG2_FC)`` with ``sign(tumour_TPM − GTEx_TPM)``.
+
+    Returns
+    -------
+    str
+        One of:
+        - ``"concordant"`` — both signs agree
+        - ``"discordant"`` — signs disagree
+        - ``"neutral"`` — either LOG2_FC ≈ 0 or tumour ≈ GTEx
+        - ``"no GTEx data"`` — GTEx TPM is missing
+    """
+    if gtex_tpm is None or pd.isna(gtex_tpm):
+        return "no GTEx data"
+
+    pred_sign = (log2_fc > 0) - (log2_fc < 0)       # +1, 0, -1
+    obs_sign = (tumour_tpm > gtex_tpm) - (tumour_tpm < gtex_tpm)
+
+    if pred_sign == 0 or obs_sign == 0:
+        return "neutral"
+    if pred_sign == obs_sign:
+        return "concordant"
+    return "discordant"
+
+
 # ---------------------------------------------------------------------------
 # Main pipeline
 # ---------------------------------------------------------------------------
@@ -240,10 +267,18 @@ def gtex_baseline(
         axis=1,
     )
 
+    # --- Directional concordance -------------------------------------------
+    df["DIRECTION_MATCH"] = df.apply(
+        lambda row: directional_concordance(
+            row.get("LOG2_FC", 0), row["OBSERVED_TPM"], row["GTEX_LUNG_TPM"],
+        ),
+        axis=1,
+    )
+
     # --- Write output ------------------------------------------------------
     out_cols = [
         "GENE", "GENE_ID", "OBSERVED_TPM", "GTEX_LUNG_TPM",
-        "TUMOUR_VS_GTEX_RATIO", "SILENCING_CLASS",
+        "TUMOUR_VS_GTEX_RATIO", "SILENCING_CLASS", "DIRECTION_MATCH",
         "LOG2_FC", "VAF", "NMD_FLAG", "VACCINE_PRIORITY",
     ]
     available = [c for c in out_cols if c in df.columns]
@@ -268,6 +303,14 @@ def gtex_baseline(
     # Classification counts
     logging.info("Classification summary:")
     for cls, count in df["SILENCING_CLASS"].value_counts().items():
+        logging.info("  %s: %d", cls, count)
+
+    # Directional concordance summary
+    dir_counts = df["DIRECTION_MATCH"].value_counts()
+    n_with_direction = dir_counts.get("concordant", 0) + dir_counts.get("discordant", 0)
+    n_concordant = dir_counts.get("concordant", 0)
+    logging.info("Directional concordance: %d/%d genes", n_concordant, n_with_direction)
+    for cls, count in dir_counts.items():
         logging.info("  %s: %d", cls, count)
 
 
