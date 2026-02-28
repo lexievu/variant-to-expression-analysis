@@ -16,7 +16,8 @@ If you're coming from a biology background, here's a quick refresher on the spec
 | **RNA-seq / TPM** | RNA sequencing measures the mRNA in a sample. TPM (Transcripts Per Million) is a normalised unit that lets us compare expression levels across genes and samples. |
 | **Log₂ fold-change (LOG2_FC)** | A way of expressing how much gene expression has changed. A LOG2_FC of +1 means expression has *doubled*; −1 means it has *halved*; 0 means no change. |
 | **AlphaGenome** | A deep-learning AI model (by Google DeepMind) that reads a stretch of DNA sequence and predicts how much each nearby gene will be expressed. We use it to ask: "if we introduce this cancer mutation into the DNA, how does the model think expression will change?" |
-| **GeneMaskLFCScorer** | A scoring method within AlphaGenome that masks (covers) a gene's exons to isolate the effect of a single mutation on that gene's predicted expression. |
+| **GeneMaskLFCScorer** | A scoring method within AlphaGenome that masks (covers) a gene's exons to isolate the effect of a single mutation on that gene's predicted expression, returning a log₂ fold-change. |
+| **GeneMaskActiveScorer** | A companion scorer that returns the absolute expression level (the higher of REF and ALT signals across exons), used as a predicted-expression proxy to compare against observed TPM. |
 | **VEP impact** | The Variant Effect Predictor classifies each mutation's likely effect on protein function as LOW, MODERATE, HIGH, or MODIFIER. We focus on HIGH-impact variants (e.g. those that introduce a premature stop codon). |
 | **VAF** | Variant Allele Frequency — the fraction of DNA molecules in the tumour sample that carry the mutation (0–1). A VAF of 0.5 means roughly half the tumour cells have it. |
 | **NMD** | Nonsense-Mediated Decay — a cellular quality-control mechanism that destroys mRNAs containing premature stop codons, effectively silencing the gene. |
@@ -77,7 +78,9 @@ cancer patient's tumour vs their healthy tissue.
 │  Send each mutation to the AlphaGenome AI and   │
 │  ask: "how would this mutation change the       │
 │  nearby gene's expression?"                     │
-│  Returns a LOG2_FC (log₂ fold-change) per gene. │
+│  Returns a LOG2_FC (log₂ fold-change) and an    │
+│  ACTIVE_EXPR (absolute expression level) per    │
+│  gene, using both scorers in a single API call. │
 │  → output/raw_predictions.tsv                   │
 └─────────────────────┬───────────────────────────┘
                       │
@@ -243,7 +246,7 @@ See [docs/TEST_COVERAGE.md](docs/TEST_COVERAGE.md) for a detailed coverage break
 | Genome build | GRCh38 / hg38 | The version of the human reference genome used as a baseline |
 | AlphaGenome tissue | Lung (`UBERON:0002048`) | The AI model is told to make lung-specific predictions |
 | Prediction window | 1,048,576 bp (~1 million bases) | How much DNA context the model reads around each mutation |
-| Expression metric | Per-gene exon-masked log₂ fold-change | The predicted change in gene expression (see glossary above) |
+| Expression metric | Per-gene exon-masked log₂ fold-change + absolute expression level | The predicted change in gene expression (LOG2_FC) and the predicted absolute level (ACTIVE_EXPR = max of REF/ALT mean across exons) |
 | Gain threshold | LOG2_FC > 1.0 | Expression at least *doubled* — flagged as a gain |
 | Loss threshold | LOG2_FC < −1.0 | Expression at least *halved* — flagged as a loss |
 

@@ -162,6 +162,7 @@ class TestComputeAllCorrelations:
         return pd.DataFrame({
             "LOG2_FC": rng.uniform(-2, 2, n),
             "OBSERVED_TPM": rng.uniform(0, 50, n),
+            "ACTIVE_EXPR": rng.uniform(10, 200, n),
         })
 
     def test_returns_at_least_two_comparisons(self):
@@ -198,6 +199,26 @@ class TestComputeAllCorrelations:
         labels = [r["comparison"] for r in rows]
         assert not any("expressed only" in l for l in labels)
 
+    def test_active_expr_correlations_included(self):
+        """When ACTIVE_EXPR column is present, extra correlations are computed."""
+        df = self._make_df(10)
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert any("ACTIVE_EXPR" in l for l in labels)
+        assert any("ACTIVE_EXPR" in l and "log" in l.lower() for l in labels)
+
+    def test_active_expr_absent_no_crash(self):
+        """When ACTIVE_EXPR column is missing, correlations still work."""
+        rng = np.random.default_rng(42)
+        df = pd.DataFrame({
+            "LOG2_FC": rng.uniform(-2, 2, 10),
+            "OBSERVED_TPM": rng.uniform(0, 50, 10),
+        })
+        rows = validate_mod.compute_all_correlations(df)
+        labels = [r["comparison"] for r in rows]
+        assert not any("ACTIVE_EXPR" in l for l in labels)
+        assert len(rows) >= 2  # LOG2_FC correlations still present
+
 
 # ===================================================================
 # validate — end-to-end pipeline
@@ -211,12 +232,12 @@ class TestValidatePipeline:
         with open(path, "w") as f:
             f.write(
                 "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
-                "\tLOG2_FC\tSTATUS"
+                "\tLOG2_FC\tACTIVE_EXPR\tSTATUS"
                 "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
             )
             f.write(
                 "chr1\t100\tA\tT\tTP53\tENSG00000141510"
-                "\t-1.0\tNeutral"
+                "\t-1.0\t55.0\tNeutral"
                 "\t0.3\t42.5\tTrue\tFalse\tHIGH\n"
             )
         return path

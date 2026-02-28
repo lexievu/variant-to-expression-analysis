@@ -154,6 +154,17 @@ def compute_all_correlations(df):
         rows.append(_corr_row(expressed, "LOG2_FC", "OBSERVED_TPM",
                               "LOG2_FC vs TPM (expressed only, TPM≥1)"))
 
+    # Absolute expression from GeneMaskActiveScorer (if available)
+    if "ACTIVE_EXPR" in df.columns:
+        rows.append(_corr_row(df, "ACTIVE_EXPR", "OBSERVED_TPM",
+                              "ACTIVE_EXPR vs OBSERVED_TPM"))
+        rows.append(_corr_row(df, "ACTIVE_EXPR", "OBSERVED_TPM",
+                              "ACTIVE_EXPR vs OBSERVED_TPM (log₁₀)",
+                              transform="log10"))
+        if len(expressed) >= 3 and "ACTIVE_EXPR" in expressed.columns:
+            rows.append(_corr_row(expressed, "ACTIVE_EXPR", "OBSERVED_TPM",
+                                  "ACTIVE_EXPR vs TPM (expressed only, TPM≥1)"))
+
     return rows
 
 
@@ -193,7 +204,7 @@ def validate(
     # --- Validation table CSV ----------------------------------------------
     out_cols = [
         "CHROM", "POS", "REF", "ALT", "GENE", "GENE_ID",
-        "LOG2_FC", "STATUS",
+        "LOG2_FC", "ACTIVE_EXPR", "STATUS",
         "VAF", "OBSERVED_TPM", "EXPRESSED", "NMD_FLAG", "VACCINE_PRIORITY",
         "unstranded", "fpkm_unstranded",
     ]

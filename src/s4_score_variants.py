@@ -58,7 +58,7 @@ VAF_CLONAL_THRESHOLD = 0.2     # VAF >= 0.2 → likely clonal variant
 
 SCORED_HEADER = (
     "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID"
-    "\tLOG2_FC\tSTATUS"
+    "\tLOG2_FC\tACTIVE_EXPR\tSTATUS"
     "\tVAF\tOBSERVED_TPM\tEXPRESSED\tNMD_FLAG\tVACCINE_PRIORITY\n"
 )
 
@@ -204,6 +204,7 @@ def score_variants(
         gene = str(r["GENE"])
         gene_id = str(r["GENE_ID"])
         log2_fc = float(r["LOG2_FC"])
+        active_expr = float(r.get("ACTIVE_EXPR", float("nan")))
 
         status = classify(log2_fc)
 
@@ -220,10 +221,11 @@ def score_variants(
 
         tpm_str = f"{observed_tpm:.2f}" if not np.isnan(observed_tpm) else "."
         vaf_str = f"{vaf:.3f}" if not np.isnan(vaf) else "."
+        active_str = f"{active_expr:.6f}" if not np.isnan(active_expr) else "."
 
         rows.append(
             f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene}\t{gene_id}"
-            f"\t{log2_fc:.6f}\t{status}"
+            f"\t{log2_fc:.6f}\t{active_str}\t{status}"
             f"\t{vaf_str}\t{tpm_str}\t{expressed}\t{nmd_flag}\t{priority}"
         )
 

@@ -1,9 +1,10 @@
-"""AlphaGenome expression prediction — per-gene log₂ fold-change via GeneMaskLFCScorer.
+"""AlphaGenome expression prediction — per-gene fold-change and absolute expression.
 
 Reads a filtered VCF (by default the output of ``s2_vcf_filter.py``), queries
-the AlphaGenome API using ``score_variant`` with ``GeneMaskLFCScorer`` to
-compute **per-gene log₂ fold-change** (masking to exon bins only), and writes
-a raw predictions TSV filtered to the target gene from the VCF CSQ annotation.
+the AlphaGenome API using ``score_variant`` with both ``GeneMaskLFCScorer``
+(per-gene log₂ fold-change) and ``GeneMaskActiveScorer`` (absolute expression
+level) in a single API call, and writes a raw predictions TSV filtered to the
+target gene from the VCF CSQ annotation.
 
 This replaces the previous whole-window summing strategy which diluted the
 target gene's signal across 21–99 neighbouring genes (see docs/GENE_DILUTION.md).
@@ -60,7 +61,7 @@ MAX_RETRIES = 3
 RETRY_BASE_DELAY = 2.0          # seconds; doubles each retry
 RATE_LIMIT_DELAY = 0.5          # seconds between successive API calls
 
-RAW_HEADER = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n"
+RAW_HEADER = "CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\tACTIVE_EXPR\n"
 
 
 # ---------------------------------------------------------------------------
@@ -123,12 +124,17 @@ def _load_checkpoint(output_file):
 def _score_with_retry(model, interval, ag_variant,
                       max_retries=MAX_RETRIES,
                       base_delay=RETRY_BASE_DELAY):
-    """Call *model.score_variant* with ``GeneMaskLFCScorer`` and retry.
+    """Call *model.score_variant* with ``GeneMaskLFCScorer`` and
+    ``GeneMaskActiveScorer`` and retry.
 
-    Returns a tidy ``pd.DataFrame`` (via ``tidy_scores``) on success,
-    or raises the last exception after all retries are exhausted.
+    Both scorers ride in a single API call (no extra cost).  Returns a
+    tidy ``pd.DataFrame`` (via ``tidy_scores``) on success, or raises
+    the last exception after all retries are exhausted.
     """
-    scorer = variant_scorers.GeneMaskLFCScorer(
+    lfc_scorer = variant_scorers.GeneMaskLFCScorer(
+        requested_output=dna_client.OutputType.RNA_SEQ,
+    )
+    active_scorer = variant_scorers.GeneMaskActiveScorer(
         requested_output=dna_client.OutputType.RNA_SEQ,
     )
     last_exc = None
@@ -137,7 +143,7 @@ def _score_with_retry(model, interval, ag_variant,
             scores = model.score_variant(
                 interval=interval,
                 variant=ag_variant,
-                variant_scorers=[scorer],
+                variant_scorers=[lfc_scorer, active_scorer],
             )
             return variant_scorers.tidy_scores(scores)
         except Exception as exc:
@@ -242,21 +248,34 @@ def run_predictions(
                     model, interval, ag_variant,
                 )
 
-                # --- Extract target gene LFC -------------------------------
+                # --- Extract target gene LFC + active expression ----------
                 log2_fc = float("nan")
+                active_expr = float("nan")
                 if scores_df is not None and not scores_df.empty:
+                    # Filter to target gene (by name, fallback to ID)
                     target = scores_df[
                         scores_df["gene_name"] == gene_name
                     ]
                     if target.empty and gene_id:
-                        # Fallback: match on ENSEMBL ID prefix
                         target = scores_df[
                             scores_df["gene_id"].str.startswith(
                                 gene_id.split(".")[0]
                             )
                         ]
                     if not target.empty:
-                        log2_fc = float(target.iloc[0]["raw_score"])
+                        # Split by scorer type
+                        lfc_rows = target[
+                            target["variant_scorer"].str.contains("LFC")
+                        ]
+                        active_rows = target[
+                            target["variant_scorer"].str.contains("Active")
+                        ]
+                        if not lfc_rows.empty:
+                            log2_fc = float(lfc_rows.iloc[0]["raw_score"])
+                        if not active_rows.empty:
+                            active_expr = float(
+                                active_rows.iloc[0]["raw_score"]
+                            )
                     else:
                         logging.warning(
                             "Gene %s (%s) not found in %d GeneMask results "
@@ -267,16 +286,16 @@ def run_predictions(
 
                 line = (
                     f"{chrom}\t{pos}\t{ref}\t{alt}\t{gene_name}\t{gene_id}"
-                    f"\t{log2_fc:.6f}\n"
+                    f"\t{log2_fc:.6f}\t{active_expr:.6f}\n"
                 )
                 outfile.write(line)
                 outfile.flush()
                 count_saved += 1
 
                 logging.info(
-                    "[%d/%d] %s:%d %s — log2_fc=%.6f",
+                    "[%d/%d] %s:%d %s — log2_fc=%.6f  active=%.2f",
                     count_saved, count_total, chrom, pos, gene_name,
-                    log2_fc,
+                    log2_fc, active_expr,
                 )
 
             except Exception:

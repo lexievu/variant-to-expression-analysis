@@ -56,9 +56,9 @@ class TestLoadCheckpoint:
 
     def test_reads_existing_variants(self):
         content = textwrap.dedent("""\
-            CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC
-            chr1\t12345\tA\tT\tTP53\tENSG00000141510\t-1.000000
-            chr7\t55249063\tG\tC\tEGFR\tENSG00000146648\t0.500000
+            CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\tACTIVE_EXPR
+            chr1\t12345\tA\tT\tTP53\tENSG00000141510\t-1.000000\t50.000000
+            chr7\t55249063\tG\tC\tEGFR\tENSG00000146648\t0.500000\t120.000000
         """)
         with tempfile.NamedTemporaryFile(
             mode="w", suffix=".tsv", delete=False
@@ -112,6 +112,7 @@ class TestScoreWithRetry:
 
         with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
             mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            mock_vs.GeneMaskActiveScorer.return_value = MagicMock()
             mock_vs.tidy_scores.return_value = expected
             result = pred_mod._score_with_retry(
                 model, "interval", "variant",
@@ -130,6 +131,7 @@ class TestScoreWithRetry:
 
         with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
             mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            mock_vs.GeneMaskActiveScorer.return_value = MagicMock()
             mock_vs.tidy_scores.return_value = expected
             result = pred_mod._score_with_retry(
                 model, "interval", "variant",
@@ -144,6 +146,7 @@ class TestScoreWithRetry:
 
         with patch("src.s3_gene_expression_prediction.variant_scorers") as mock_vs:
             mock_vs.GeneMaskLFCScorer.return_value = MagicMock()
+            mock_vs.GeneMaskActiveScorer.return_value = MagicMock()
             with pytest.raises(RuntimeError, match="permanent"):
                 pred_mod._score_with_retry(
                     model, "interval", "variant",

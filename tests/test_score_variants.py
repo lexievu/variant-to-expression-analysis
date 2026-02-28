@@ -212,9 +212,9 @@ class TestScoreVariantsPipeline:
         """Create a minimal raw predictions TSV."""
         path = os.path.join(tmp_dir, "raw.tsv")
         with open(path, "w") as f:
-            f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n")
-            f.write("chr1\t100\tA\tT\tTP53\tENSG00000141510\t-1.000000\n")
-            f.write("chr7\t200\tG\tC\tEGFR\tENSG00000146648\t1.000000\n")
+            f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\tACTIVE_EXPR\n")
+            f.write("chr1\t100\tA\tT\tTP53\tENSG00000141510\t-1.000000\t55.000000\n")
+            f.write("chr7\t200\tG\tC\tEGFR\tENSG00000146648\t1.000000\t120.000000\n")
         return path
 
     def _write_rna(self, tmp_dir):
@@ -275,7 +275,7 @@ class TestScoreVariantsPipeline:
         with tempfile.TemporaryDirectory() as td:
             raw_path = os.path.join(td, "raw.tsv")
             with open(raw_path, "w") as f:
-                f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\n")
+                f.write("CHROM\tPOS\tREF\tALT\tGENE\tGENE_ID\tLOG2_FC\tACTIVE_EXPR\n")
             rna_path = self._write_rna(td)
             out_path = os.path.join(td, "scored.tsv")
 
